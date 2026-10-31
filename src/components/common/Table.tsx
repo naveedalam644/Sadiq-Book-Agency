@@ -94,3 +94,4 @@ export function Table<T>({
     </div>
   );
 }
+

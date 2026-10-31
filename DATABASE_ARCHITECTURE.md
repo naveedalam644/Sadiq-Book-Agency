@@ -324,3 +324,4 @@ For future phases, the following composite indexes will be deployed to support e
 ## 4. Strict Phase 1 Compliance
 
 > **Important Boundary Rule:** No mock or fake documents have been written to these collections in Phase 1. The Firestore database remains clean and unpolluted. Live data will only enter the database as specific business modules are developed in subsequent phases.
+

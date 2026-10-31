@@ -9,7 +9,7 @@ export const AppLayout: React.FC = () => {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   return (
-    <div className="min-h-screen bg-slate-50 flex overflow-x-hidden">
+    <div className="min-h-screen bg-[#F4F7FB] flex overflow-x-hidden">
       {/* Desktop Sidebar */}
       <div className="hidden lg:block lg:shrink-0">
         <Sidebar className="fixed inset-y-0 left-0 w-64 z-30" />

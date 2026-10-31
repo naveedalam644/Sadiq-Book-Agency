@@ -94,3 +94,4 @@ For every future phase pull request / milestone:
 1. Expected reads, writes, and storage operations will be formally stated before implementation.
 2. Network tab query counts will be verified during phase testing.
 3. Security rules will strictly forbid unindexed or unbounded queries.
+

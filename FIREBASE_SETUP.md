@@ -192,3 +192,4 @@ VITE_BUSINESS_NAME="Al-Noor Books & Stationers"
 3. You will be redirected to the **Admin Login** page.
 4. Sign in with the administrator email and password you created in Step 4.
 5. Once signed in, visit **Firebase & System** in the sidebar to run a diagnostic test. A green badge `Firebase Connected` confirms everything is operating correctly.
+

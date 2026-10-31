@@ -8,3 +8,4 @@ export const useToast = (): ToastContextValue => {
   }
   return context;
 };
+

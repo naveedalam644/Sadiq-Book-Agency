@@ -31,3 +31,4 @@ export const getFriendlyErrorMessage = (errorCode: string): string => {
       return 'Authentication failed. Please verify your email and password.';
   }
 };
+

@@ -1,6 +1,6 @@
 import React from 'react';
 
-export type BadgeVariant = 'success' | 'warning' | 'danger' | 'info' | 'neutral' | 'brand';
+export type BadgeVariant = 'success' | 'warning' | 'danger' | 'info' | 'neutral' | 'brand' | 'gold' | 'navy';
 export type BadgeSize = 'sm' | 'md';
 
 export interface BadgeProps extends React.HTMLAttributes<HTMLSpanElement> {
@@ -20,11 +20,13 @@ export const Badge: React.FC<BadgeProps> = ({
 }) => {
   const sizeStyles = {
     sm: 'text-[11px] font-medium px-2 py-0.5 rounded-md gap-1',
-    md: 'text-xs font-medium px-2.5 py-1 rounded-md gap-1.5',
+    md: 'text-xs font-semibold px-2.5 py-1 rounded-md gap-1.5',
   }[size];
 
   const variantStyles = {
-    brand: 'bg-brand-50 text-brand-700 border border-brand-200/60',
+    brand: 'bg-[#F5B51B]/20 text-[#071F49] border border-[#F5B51B]/50 font-bold',
+    gold: 'bg-[#F5B51B] text-[#071F49] border border-[#F5B51B] font-bold shadow-xs',
+    navy: 'bg-[#071F49] text-white border border-[#0E2E70] font-semibold',
     success: 'bg-emerald-50 text-emerald-700 border border-emerald-200/60',
     warning: 'bg-amber-50 text-amber-700 border border-amber-200/60',
     danger: 'bg-rose-50 text-rose-700 border border-rose-200/60',
@@ -33,7 +35,9 @@ export const Badge: React.FC<BadgeProps> = ({
   }[variant];
 
   const dotColor = {
-    brand: 'bg-brand-500',
+    brand: 'bg-[#071F49]',
+    gold: 'bg-[#071F49]',
+    navy: 'bg-[#F5B51B]',
     success: 'bg-emerald-500',
     warning: 'bg-amber-500',
     danger: 'bg-rose-500',

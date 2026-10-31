@@ -32,9 +32,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ onNavigate, className = '' }) 
   const { logout, currentUser } = useAuth();
   const location = useLocation();
 
-  const businessName =
-    import.meta.env.VITE_BUSINESS_NAME || 'Bookstore & Stationers';
-
   const navItems: NavItem[] = [
     {
       name: 'Dashboard',
@@ -96,21 +93,28 @@ export const Sidebar: React.FC<SidebarProps> = ({ onNavigate, className = '' }) 
 
   return (
     <aside
-      className={`flex flex-col h-full bg-slate-900 text-slate-300 w-64 select-none border-r border-slate-800 ${className}`}
+      className={`flex flex-col h-full bg-[#071F49] text-slate-200 w-64 select-none border-r border-[#0E2E70] shadow-xl ${className}`}
     >
-      {/* Brand Header */}
-      <div className="p-5 border-b border-slate-800/80">
+      {/* Brand Header with Sadiq Book Agency Logo */}
+      <div className="p-4 border-b border-[#0E2E70]/90 bg-[#04122C]/40">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-brand-600 flex items-center justify-center text-white shadow-md shadow-brand-600/30">
-            <BookOpen className="w-5 h-5" />
+          <div className="w-12 h-12 rounded-xl bg-white p-1 flex items-center justify-center shrink-0 shadow-md ring-2 ring-[#F5B51B]/40">
+            <img
+              src="/images/sadiq-book-agency-logo.png"
+              alt="Sadiq Book Agency Logo"
+              className="w-full h-full object-contain"
+            />
           </div>
           <div className="min-w-0 flex-1">
-            <h2 className="text-sm font-bold text-white tracking-tight truncate">
-              {businessName}
+            <h2 className="text-sm font-extrabold text-white tracking-tight leading-tight truncate">
+              SADIQ BOOK AGENCY
             </h2>
-            <div className="flex items-center gap-1.5 mt-0.5">
-              <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
-              <p className="text-[11px] font-medium text-slate-400 uppercase tracking-wider">
+            <p className="text-[10px] font-medium text-[#F5B51B] tracking-wide mt-0.5 truncate">
+              Notebooks • Registers • Stationery
+            </p>
+            <div className="flex items-center gap-1.5 mt-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+              <p className="text-[10px] font-semibold text-slate-300 uppercase tracking-wider">
                 Phase 1 Active
               </p>
             </div>
@@ -120,8 +124,9 @@ export const Sidebar: React.FC<SidebarProps> = ({ onNavigate, className = '' }) 
 
       {/* Navigation Links */}
       <div className="flex-1 overflow-y-auto px-3 py-4 space-y-1">
-        <div className="px-3 pb-2 text-[10px] font-bold uppercase tracking-wider text-slate-400">
-          Core Modules
+        <div className="px-3 pb-2 text-[10px] font-bold uppercase tracking-wider text-[#F5B51B]/80 flex items-center justify-between">
+          <span>Main Navigation</span>
+          <span className="text-[9px] text-slate-400 font-normal">v1.0</span>
         </div>
 
         {navItems.map((item) => {
@@ -135,24 +140,26 @@ export const Sidebar: React.FC<SidebarProps> = ({ onNavigate, className = '' }) 
                 to={item.to}
                 onClick={onNavigate}
                 className={({ isActive: linkActive }) =>
-                  `flex items-center justify-between px-3 py-2.5 rounded-lg text-sm font-medium transition-all group ${
+                  `flex items-center justify-between px-3.5 py-2.5 rounded-xl text-sm font-semibold transition-all duration-150 group ${
                     linkActive
-                      ? 'bg-brand-600 text-white shadow-sm shadow-brand-600/20'
-                      : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
+                      ? 'bg-[#F5B51B] text-[#071F49] shadow-lg shadow-[#F5B51B]/25 font-bold'
+                      : 'text-slate-200 hover:bg-[#0A255B] hover:text-white'
                   }`
                 }
               >
                 <div className="flex items-center gap-3">
                   <Icon
                     className={`w-4 h-4 transition-colors ${
-                      isActive ? 'text-white' : 'text-slate-400 group-hover:text-white'
+                      isActive ? 'text-[#071F49]' : 'text-[#F5B51B] group-hover:text-white'
                     }`}
                   />
                   <span>{item.name}</span>
                 </div>
                 <ChevronRight
-                  className={`w-3.5 h-3.5 opacity-60 ${
-                    isActive ? 'opacity-100' : 'group-hover:translate-x-0.5 transition-transform'
+                  className={`w-3.5 h-3.5 transition-transform ${
+                    isActive
+                      ? 'text-[#071F49] opacity-100'
+                      : 'text-slate-400 opacity-60 group-hover:translate-x-0.5 group-hover:opacity-100'
                   }`}
                 />
               </NavLink>
@@ -164,13 +171,13 @@ export const Sidebar: React.FC<SidebarProps> = ({ onNavigate, className = '' }) 
             <div
               key={item.name}
               title={`Scheduled for development in ${item.phase}`}
-              className="flex items-center justify-between px-3 py-2.5 rounded-lg text-sm font-medium text-slate-400 cursor-not-allowed opacity-75 hover:bg-slate-800/40"
+              className="flex items-center justify-between px-3.5 py-2.5 rounded-xl text-sm font-medium text-slate-400 cursor-not-allowed opacity-75 hover:bg-[#0A255B]/40 transition"
             >
               <div className="flex items-center gap-3">
                 <Icon className="w-4 h-4 text-slate-400" />
-                <span className="text-slate-400">{item.name}</span>
+                <span className="text-slate-300">{item.name}</span>
               </div>
-              <span className="text-[10px] font-semibold tracking-wide px-2 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700/60">
+              <span className="text-[10px] font-semibold tracking-wide px-2 py-0.5 rounded-md bg-[#04122C] text-slate-300 border border-[#0E2E70]/80">
                 {item.phase}
               </span>
             </div>
@@ -179,17 +186,17 @@ export const Sidebar: React.FC<SidebarProps> = ({ onNavigate, className = '' }) 
       </div>
 
       {/* Admin Profile & Logout Box */}
-      <div className="p-3 border-t border-slate-800/80 bg-slate-950/40">
-        <div className="flex items-center gap-3 p-2 rounded-lg bg-slate-800/50 mb-2 border border-slate-800">
-          <div className="w-8 h-8 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 shrink-0">
+      <div className="p-3 border-t border-[#0E2E70] bg-[#04122C]/80">
+        <div className="flex items-center gap-3 p-2.5 rounded-xl bg-[#071F49]/80 mb-2 border border-[#0E2E70]">
+          <div className="w-8 h-8 rounded-lg bg-[#F5B51B]/20 border border-[#F5B51B]/40 flex items-center justify-center text-[#F5B51B] shrink-0 font-bold">
             <ShieldCheck className="w-4 h-4" />
           </div>
           <div className="min-w-0 flex-1">
-            <p className="text-xs font-semibold text-white truncate">
+            <p className="text-xs font-bold text-white truncate">
               {currentUser?.displayName || 'Administrator'}
             </p>
-            <p className="text-[11px] text-slate-400 truncate">
-              {currentUser?.email || 'admin@bookstore.local'}
+            <p className="text-[11px] text-slate-300 truncate">
+              {currentUser?.email || 'admin@sadiqbookagency.com'}
             </p>
           </div>
         </div>
@@ -197,7 +204,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ onNavigate, className = '' }) 
         <button
           type="button"
           onClick={() => logout()}
-          className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs font-medium text-rose-300 hover:bg-rose-500/10 hover:text-rose-200 transition-colors border border-rose-500/20"
+          className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold text-rose-300 hover:bg-rose-500/15 hover:text-white transition-colors border border-rose-500/30"
         >
           <LogOut className="w-3.5 h-3.5" />
           <span>Sign Out Admin</span>

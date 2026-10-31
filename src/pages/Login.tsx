@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
-  BookOpen,
   Mail,
   Lock,
   Eye,
@@ -30,9 +29,7 @@ export const Login: React.FC = () => {
   const [formError, setFormError] = useState<string | null>(null);
 
   const businessName =
-    import.meta.env.VITE_BUSINESS_NAME || 'Bookstore & Stationers';
-  const appName =
-    import.meta.env.VITE_APP_NAME || 'Bookstore Management System';
+    import.meta.env.VITE_BUSINESS_NAME || 'Sadiq Book Agency';
 
   // Target destination after successful login
   const from = (location.state as any)?.from?.pathname || '/';
@@ -65,7 +62,7 @@ export const Login: React.FC = () => {
     try {
       setIsSubmitting(true);
       await login({ email: email.trim(), password, rememberMe });
-      success('Logged in successfully. Welcome to Bookstore Management.', 'Authentication Successful');
+      success('Logged in successfully. Welcome to Sadiq Book Agency.', 'Authentication Successful');
       navigate(from, { replace: true });
     } catch (err: any) {
       // Error message is stored in auth context or returned in error
@@ -76,33 +73,40 @@ export const Login: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex flex-col justify-center py-12 sm:px-6 lg:px-8 px-4">
-      <div className="sm:mx-auto sm:w-full sm:max-w-md">
+    <div className="min-h-screen bg-gradient-to-br from-[#071F49] via-[#0A255B] to-[#04122C] flex flex-col justify-center py-12 sm:px-6 lg:px-8 px-4">
+      <div className="sm:mx-auto sm:w-full sm:max-w-md text-center">
         {/* Brand Icon & Heading */}
         <div className="flex justify-center mb-4">
-          <div className="w-14 h-14 rounded-2xl bg-brand-600 flex items-center justify-center text-white shadow-xl shadow-brand-600/30 ring-4 ring-brand-500/20">
-            <BookOpen className="w-8 h-8" />
+          <div className="w-20 h-20 rounded-2xl bg-white p-2 shadow-2xl ring-4 ring-[#F5B51B]/40 flex items-center justify-center">
+            <img
+              src="/images/sadiq-book-agency-logo.png"
+              alt="Sadiq Book Agency Logo"
+              className="w-full h-full object-contain"
+            />
           </div>
         </div>
 
-        <h1 className="text-center text-2xl font-bold tracking-tight text-white">
+        <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-white">
           {businessName}
         </h1>
-        <p className="mt-1 text-center text-xs sm:text-sm text-slate-400">
-          {appName} — Admin Portal
+        <p className="mt-1 text-xs sm:text-sm text-[#F5B51B] font-semibold tracking-wide">
+          Notebooks • Registers • Stationery
+        </p>
+        <p className="text-xs text-slate-300 mt-0.5">
+          Admin Accounting & Management Portal
         </p>
       </div>
 
       <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
-        <div className="bg-white py-8 px-5 sm:px-10 shadow-2xl rounded-2xl border border-slate-100">
+        <div className="bg-white py-8 px-5 sm:px-10 shadow-2xl rounded-2xl border-t-4 border-[#F5B51B]">
           {/* Header pill */}
           <div className="flex items-center justify-between pb-5 mb-5 border-b border-slate-100">
             <div>
-              <h2 className="text-base font-semibold text-slate-900">Sign In to Dashboard</h2>
+              <h2 className="text-base font-bold text-[#071F49]">Sign In to Portal</h2>
               <p className="text-xs text-slate-500">Phase 1 Secure Admin Access</p>
             </div>
-            <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200">
-              <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+            <span className="inline-flex items-center gap-1 text-[11px] font-bold text-[#071F49] bg-[#F5B51B]/20 px-2.5 py-1 rounded-full border border-[#F5B51B]/50">
+              <ShieldCheck className="w-3.5 h-3.5 text-[#071F49]" />
               Protected
             </span>
           </div>
@@ -151,8 +155,8 @@ export const Login: React.FC = () => {
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="admin@bookstore.com"
-                leftIcon={<Mail className="w-4 h-4" />}
+                placeholder="admin@sadiqbookagency.com"
+                leftIcon={<Mail className="w-4 h-4 text-slate-400" />}
                 disabled={isSubmitting}
               />
             </div>
@@ -167,7 +171,7 @@ export const Login: React.FC = () => {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••••••"
-                leftIcon={<Lock className="w-4 h-4" />}
+                leftIcon={<Lock className="w-4 h-4 text-slate-400" />}
                 rightIcon={
                   <button
                     type="button"
@@ -192,14 +196,14 @@ export const Login: React.FC = () => {
                   type="checkbox"
                   checked={rememberMe}
                   onChange={(e) => setRememberMe(e.target.checked)}
-                  className="w-4 h-4 rounded text-brand-600 focus:ring-brand-500 border-slate-300 transition"
+                  className="w-4 h-4 rounded text-[#071F49] focus:ring-[#F5B51B] border-slate-300 transition"
                   disabled={isSubmitting}
                 />
-                <span className="ml-2 text-xs text-slate-600">Remember this device</span>
+                <span className="ml-2 text-xs font-medium text-slate-600">Remember this workstation</span>
               </label>
 
-              <span className="text-[11px] text-slate-400 flex items-center gap-1">
-                <Server className="w-3 h-3" />
+              <span className="text-[11px] text-slate-400 flex items-center gap-1 font-medium">
+                <Server className="w-3 h-3 text-[#071F49]" />
                 Persistent session
               </span>
             </div>
@@ -211,7 +215,8 @@ export const Login: React.FC = () => {
                 size="md"
                 fullWidth
                 isLoading={isSubmitting}
-                leftIcon={<ShieldCheck className="w-4 h-4" />}
+                className="bg-[#071F49] hover:bg-[#0A255B] text-white font-bold shadow-md shadow-[#071F49]/20"
+                leftIcon={<ShieldCheck className="w-4 h-4 text-[#F5B51B]" />}
               >
                 Sign In to Admin Portal
               </Button>
@@ -220,19 +225,19 @@ export const Login: React.FC = () => {
 
           {/* Security Notice - Strict No Public Registration */}
           <div className="mt-6 pt-5 border-t border-slate-100">
-            <div className="flex items-start gap-2.5 text-slate-500 text-xs bg-slate-50 p-3 rounded-lg border border-slate-200/60">
-              <HelpCircle className="w-4 h-4 text-slate-400 shrink-0 mt-0.5" />
+            <div className="flex items-start gap-2.5 text-slate-500 text-xs bg-slate-50 p-3 rounded-xl border border-slate-200/60">
+              <HelpCircle className="w-4 h-4 text-[#071F49] shrink-0 mt-0.5" />
               <div>
-                <span className="font-semibold text-slate-700 block">Strict Access Policy</span>
-                Public customer registration is intentionally disabled. Admin accounts are provisioned via Firebase Console or system admin.
+                <span className="font-bold text-slate-800 block">Restricted Store Access</span>
+                Public customer self-registration is disabled. Store operator and cashier credentials are provisioned via Firebase console.
               </div>
             </div>
           </div>
         </div>
 
         {/* Footer info */}
-        <p className="mt-6 text-center text-xs text-slate-400">
-          Bookstore & Stationers Management System • Phase 1 Release
+        <p className="mt-6 text-center text-xs text-slate-400 font-medium">
+          Sadiq Book Agency • Notebooks • Registers • Stationery
         </p>
       </div>
     </div>

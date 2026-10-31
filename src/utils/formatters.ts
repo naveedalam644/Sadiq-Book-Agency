@@ -39,3 +39,4 @@ export const getGreetingByTime = (): string => {
   if (hour < 17) return 'Good Afternoon';
   return 'Good Evening';
 };
+

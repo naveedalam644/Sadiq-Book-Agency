@@ -9,7 +9,7 @@
   }
 
   body {
-    @apply bg-slate-50 text-slate-800 antialiased selection:bg-brand-100 selection:text-brand-900 min-h-screen;
+    @apply bg-[#F4F7FB] text-slate-800 antialiased selection:bg-gold-200 selection:text-navy-900 min-h-screen;
     font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
   }
 

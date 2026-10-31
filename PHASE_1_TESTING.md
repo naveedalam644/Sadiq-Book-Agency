@@ -98,3 +98,4 @@ Strict Phase 1 boundaries have been preserved: no dummy sales, fake profits, or 
   3. No Khata ledger write routines exist.
   4. Metric cards show `0` or `PKR 0` with explicit "Phase X" badges.
   5. Recent activity log is initialized with a clean empty state.
+
