@@ -73,8 +73,8 @@ export const Login: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#071F49] via-[#0A255B] to-[#04122C] flex flex-col justify-center py-12 sm:px-6 lg:px-8 px-4">
-      <div className="sm:mx-auto sm:w-full sm:max-w-md text-center">
+    <div className="min-h-screen bg-gradient-to-br from-[#071F49] via-[#0A255B] to-[#04122C] flex flex-col justify-center py-8 sm:py-12 px-4 sm:px-6 lg:px-8">
+      <div className="w-full max-w-md mx-auto text-center">
         {/* Brand Icon & Heading */}
         <div className="flex justify-center mb-4">
           <div className="w-20 h-20 rounded-2xl bg-white p-2 shadow-2xl ring-4 ring-[#F5B51B]/40 flex items-center justify-center">
@@ -86,19 +86,19 @@ export const Login: React.FC = () => {
           </div>
         </div>
 
-        <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-white">
+        <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-white px-2">
           {businessName}
         </h1>
-        <p className="mt-1 text-xs sm:text-sm text-[#F5B51B] font-semibold tracking-wide">
+        <p className="mt-1 text-xs sm:text-sm text-[#F5B51B] font-semibold tracking-wide px-2">
           Notebooks • Registers • Stationery
         </p>
-        <p className="text-xs text-slate-300 mt-0.5">
+        <p className="text-xs text-slate-300 mt-0.5 px-2">
           Admin Accounting & Management Portal
         </p>
       </div>
 
-      <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
-        <div className="bg-white py-8 px-5 sm:px-10 shadow-2xl rounded-2xl border-t-4 border-[#F5B51B]">
+      <div className="mt-6 sm:mt-8 w-full max-w-md mx-auto">
+        <div className="bg-white py-6 sm:py-8 px-4 sm:px-10 shadow-2xl rounded-2xl border-t-4 border-[#F5B51B]">
           {/* Header pill */}
           <div className="flex items-center justify-between pb-5 mb-5 border-b border-slate-100">
             <div>
@@ -190,19 +190,21 @@ export const Login: React.FC = () => {
               />
             </div>
 
-            <div className="flex items-center justify-between pt-1">
-              <label className="flex items-center cursor-pointer select-none">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-1">
+              <label className="flex items-start sm:items-center cursor-pointer select-none min-w-0">
                 <input
                   type="checkbox"
                   checked={rememberMe}
                   onChange={(e) => setRememberMe(e.target.checked)}
-                  className="w-4 h-4 rounded text-[#071F49] focus:ring-[#F5B51B] border-slate-300 transition"
+                  className="w-4 h-4 rounded text-[#071F49] focus:ring-[#F5B51B] border-slate-300 transition shrink-0 mt-0.5 sm:mt-0"
                   disabled={isSubmitting}
                 />
-                <span className="ml-2 text-xs font-medium text-slate-600">Remember this workstation</span>
+                <span className="ml-2 text-xs font-medium text-slate-600 leading-snug">
+                  Remember this workstation
+                </span>
               </label>
 
-              <span className="text-[11px] text-slate-400 flex items-center gap-1 font-medium">
+              <span className="text-[11px] text-slate-400 flex items-center gap-1 font-medium shrink-0 pl-6 sm:pl-0">
                 <Server className="w-3 h-3 text-[#071F49]" />
                 Persistent session
               </span>
@@ -236,7 +238,7 @@ export const Login: React.FC = () => {
         </div>
 
         {/* Footer info */}
-        <p className="mt-6 text-center text-xs text-slate-400 font-medium">
+        <p className="mt-6 text-center text-xs text-slate-400 font-medium px-2 leading-relaxed">
           Sadiq Book Agency • Notebooks • Registers • Stationery
         </p>
       </div>
