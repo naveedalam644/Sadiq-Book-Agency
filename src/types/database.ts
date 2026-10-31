@@ -28,7 +28,7 @@ export interface CustomerDocument {
   shopName?: string;
   address?: string;
   city?: string;
-  discountPercentage?: number; // Primary for marketshop customers
+  discountPercentage?: number; // Base store discount for marketshop customers
   creditLimit: number;
   currentBalance: number; // Positive = owes money (Udhaar), Negative = advance
   isActive: boolean;
@@ -118,9 +118,10 @@ export interface SaleItem {
   productName: string;
   sku: string;
   quantity: number;
-  unitPrice: number;
-  discountRate: number;
-  lineTotal: number;
+  unitPrice: number; // Standard catalog unit price
+  discountRate: number; // Exact customer-specific or trade discount % applied at sale time
+  discountAmount: number; // Monitory discount subtracted
+  lineTotal: number; // (unitPrice * (1 - discountRate/100)) * quantity
 }
 
 export interface SaleDocument {
@@ -243,3 +244,28 @@ export interface AuditLogDocument {
   timestamp: string;
 }
 
+// 14. Customer-wise Product Discounts ('customerDiscounts')
+// Designed for flexible manual discount assignment per customer per product
+export interface CustomerProductDiscountDocument {
+  id: string; // Format: `${customerId}_${productId}` for O(1) point-lookup
+  customerId: string;
+  customerName: string;
+  productId: string;
+  productTitle: string;
+  sku: string;
+  discountPercentage: number; // Custom negotiated discount (e.g. 15 for 15% off)
+  assignedByUserId: string;
+  assignedByEmail: string;
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CustomerDiscountBundleDocument {
+  id: string; // customerId
+  customerId: string;
+  customerName: string;
+  discounts: Record<string, number>; // Fast in-memory map: { [productId]: discountPercentage }
+  updatedAt: string;
+  updatedByUserId: string;
+}

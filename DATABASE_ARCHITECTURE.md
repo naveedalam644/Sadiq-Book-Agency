@@ -284,19 +284,45 @@
 
 ### 13. `auditLogs` Collection
 * **Collection Path:** `/auditLogs/{logId}`
-* **Purpose:** System-level security and administrative audit logging of logins, settings modifications, price changes, and manual balances.
+* **Purpose:** System-level security and administrative audit logging of logins, settings modifications, price changes, discount assignments, and manual balances.
 
 | Field Name | Type | Description |
 | :--- | :--- | :--- |
 | `id` | `string` | Audit event UUID |
-| `action` | `string` | Action code (e.g. `AUTH_LOGIN`, `PRICE_UPDATE`, `BACKUP_EXPORT`) |
-| `collectionTarget` | `string` | Affected collection (e.g. `products`, `settings`) |
+| `action` | `string` | Action code (e.g. `AUTH_LOGIN`, `PRICE_UPDATE`, `DISCOUNT_ASSIGN`, `DISCOUNT_REMOVE`) |
+| `collectionTarget` | `string` | Affected collection (e.g. `products`, `customerDiscounts`, `settings`) |
 | `targetId` | `string?` | Affected document ID |
 | `details` | `string` | Human-readable explanation of the change |
 | `performedByUserId` | `string` | Admin/Operator UID |
 | `performedByEmail` | `string` | Email address of operator |
 | `ipAddress` | `string?` | Client network origin |
 | `timestamp` | `string` (ISO 8601) | Event timestamp |
+
+---
+
+### 14. `customerDiscounts` Collection (Customer-Wise Product Discount Management)
+* **Collection Path:** `/customerDiscounts/{customerId}_{productId}`
+* **Purpose:** Stores manual, persistent discount percentages assigned by the owner to specific customers for specific products.
+* **Security:** Managed strictly by authenticated administrators (`isAdmin()`).
+* **Cost-Optimization Architecture:**
+  1. **Direct $O(1)$ Point-Lookup:** Document ID format `${customerId}_${productId}` allows direct fetching with `getDoc()` costing exactly **1 read** during product selection.
+  2. **Discount Profile Bundling:** For regular marketshop customers, a companion profile document `/customerDiscounts/{customerId}` stores a map `{ discounts: { [productId]: discountPercentage } }`, allowing the POS checkout terminal to read **1 single document** and cache the customer's entire custom discount table for the entire checkout session (**0 reads per added line item**).
+  3. **Historical Invariance:** The exact applied `discountRate` and calculated `discountAmount` are copied directly onto the immutable `sales.items[]` invoice record at checkout. Modifying or deleting discounts subsequently will never retroactively distort historical sales receipts or ledger balances.
+
+| Field Name | Type | Description |
+| :--- | :--- | :--- |
+| `id` | `string` | Composite Key: `${customerId}_${productId}` |
+| `customerId` | `string` | Target customer ID |
+| `customerName` | `string` | Denormalized customer title / shop name |
+| `productId` | `string` | Target product catalog ID |
+| `productTitle` | `string` | Denormalized item title (e.g. "Oxford English 5") |
+| `sku` | `string` | Product SKU code |
+| `discountPercentage`| `number` | Assigned percentage discount (e.g., 15 for 15% off) |
+| `assignedByUserId` | `string` | Admin UID who granted the discount |
+| `assignedByEmail` | `string` | Admin email |
+| `notes` | `string?` | Negotiation notes (e.g., "Annual contract rate for 500 units") |
+| `createdAt` | `string` (ISO 8601) | Initial assignment date (persists indefinitely) |
+| `updatedAt` | `string` (ISO 8601) | Last modification date |
 
 ---
 

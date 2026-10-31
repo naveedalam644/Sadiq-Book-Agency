@@ -56,6 +56,9 @@ service cloud.firestore {
     match /customers/{customerId} {
       allow read, write: if isAdmin();
     }
+    match /customerDiscounts/{discountId} {
+      allow read, write: if isAdmin();
+    }
     match /products/{productId} {
       allow read, write: if isAdmin();
     }
@@ -85,4 +88,3 @@ service cloud.firestore {
     }
   }
 }
-
