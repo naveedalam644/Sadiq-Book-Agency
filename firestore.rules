@@ -1,0 +1,87 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions for secure role and authentication checks
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Checks if the authenticated user has an active admin record or custom claim
+    function isAdmin() {
+      return isAuthenticated() && (
+        request.auth.token.admin == true ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' &&
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isActive == true)
+      );
+    }
+
+    // Checks if the user is operating on their own user document
+    function isSelf(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // Deny all access by default
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Users collection:
+    // Only admins can list users or create new user profiles.
+    // Individual users can read their own profile.
+    match /users/{userId} {
+      allow read: if isSelf(userId) || isAdmin();
+      allow create, update, delete: if isAdmin();
+    }
+
+    // System Settings (Store details, invoice counter, business rules):
+    // Authenticated staff can read; only admins can modify
+    match /settings/{settingId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    // Audit logs:
+    // Append-only for system events, readable only by admin
+    match /auditLogs/{logId} {
+      allow read: if isAdmin();
+      allow create: if isAuthenticated();
+      allow update, delete: if false;
+    }
+
+    // Business Modules (Prepared for future phases):
+    // Restricted strictly to authenticated and active admin users.
+    // No public read or write access under any circumstances.
+    match /customers/{customerId} {
+      allow read, write: if isAdmin();
+    }
+    match /products/{productId} {
+      allow read, write: if isAdmin();
+    }
+    match /categories/{categoryId} {
+      allow read, write: if isAdmin();
+    }
+    match /suppliers/{supplierId} {
+      allow read, write: if isAdmin();
+    }
+    match /purchases/{purchaseId} {
+      allow read, write: if isAdmin();
+    }
+    match /sales/{saleId} {
+      allow read, write: if isAdmin();
+    }
+    match /payments/{paymentId} {
+      allow read, write: if isAdmin();
+    }
+    match /customerLedger/{ledgerId} {
+      allow read, write: if isAdmin();
+    }
+    match /expenses/{expenseId} {
+      allow read, write: if isAdmin();
+    }
+    match /stockMovements/{movementId} {
+      allow read, write: if isAdmin();
+    }
+  }
+}
