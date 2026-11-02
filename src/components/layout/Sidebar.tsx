@@ -12,6 +12,7 @@ import {
   LogOut,
   ChevronRight,
   ShieldCheck,
+  Building2,
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 
@@ -52,7 +53,21 @@ export const Sidebar: React.FC<SidebarProps> = ({ onNavigate, className = '' }) 
       to: '/inventory',
       icon: BookOpen,
       phase: 'Phase 2',
-      enabled: false,
+      enabled: true,
+    },
+    {
+      name: 'Suppliers & Vendors',
+      to: '/suppliers',
+      icon: Building2,
+      phase: 'Phase 2',
+      enabled: true,
+    },
+    {
+      name: 'Purchases & Intake',
+      to: '/purchases',
+      icon: Truck,
+      phase: 'Phase 2',
+      enabled: true,
     },
     {
       name: 'Customers & Khata',
@@ -66,13 +81,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ onNavigate, className = '' }) 
       to: '/billing',
       icon: Receipt,
       phase: 'Phase 4',
-      enabled: false,
-    },
-    {
-      name: 'Purchases & Suppliers',
-      to: '/purchases',
-      icon: Truck,
-      phase: 'Phase 5',
       enabled: false,
     },
     {
@@ -115,7 +123,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ onNavigate, className = '' }) 
             <div className="flex items-center gap-1.5 mt-1">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
               <p className="text-[10px] font-semibold text-slate-300 uppercase tracking-wider">
-                Phase 1 Active
+                Phase 2 Active
               </p>
             </div>
           </div>
@@ -126,7 +134,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ onNavigate, className = '' }) 
       <div className="flex-1 overflow-y-auto px-3 py-4 space-y-1">
         <div className="px-3 pb-2 text-[10px] font-bold uppercase tracking-wider text-[#F5B51B]/80 flex items-center justify-between">
           <span>Main Navigation</span>
-          <span className="text-[9px] text-slate-400 font-normal">v1.0</span>
+          <span className="text-[9px] text-slate-400 font-normal">v2.0</span>
         </div>
 
         {navItems.map((item) => {

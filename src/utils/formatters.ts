@@ -3,10 +3,14 @@
  */
 
 export const formatCurrency = (amount: number, currency = 'PKR'): string => {
-  return `${currency} ${amount.toLocaleString('en-US', {
+  return `${currency} ${(amount || 0).toLocaleString('en-US', {
     minimumFractionDigits: 0,
     maximumFractionDigits: 2,
   })}`;
+};
+
+export const formatNumber = (num: number): string => {
+  return (num || 0).toLocaleString('en-US');
 };
 
 export const formatDate = (isoString?: string): string => {
@@ -39,4 +43,3 @@ export const getGreetingByTime = (): string => {
   if (hour < 17) return 'Good Afternoon';
   return 'Good Evening';
 };
-

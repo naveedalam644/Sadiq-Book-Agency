@@ -1,7 +1,7 @@
 /**
  * DATABASE ARCHITECTURE TYPE DEFINITIONS
- * Prepared for Phase 1 documentation and future phase implementations.
- * Strict Phase 1 constraint: These are type definitions only, no fake records or live business logic.
+ * Bookstore & Stationers Management System
+ * Sadiq Book Agency
  */
 
 // 1. Users Collection ('users')
@@ -68,7 +68,20 @@ export interface ProductDocument {
   unit: string; // 'piece', 'bundle', 'dozen', 'box'
   shelfLocation?: string;
   isActive: boolean;
+  isLowStock?: boolean;
+  titleSearch?: string;
   createdAt: string;
+  updatedAt: string;
+}
+
+// 4b. Inventory Summary Singleton ('settings/inventory_summary')
+export interface InventorySummaryDocument {
+  id: 'inventory_summary';
+  totalProducts: number;
+  totalStockQuantity: number;
+  totalStockValue: number; // Aggregate based on costPrice * currentStock
+  totalSuppliers: number;
+  lowStockCount: number;
   updatedAt: string;
 }
 
@@ -245,7 +258,6 @@ export interface AuditLogDocument {
 }
 
 // 14. Customer-wise Product Discounts ('customerDiscounts')
-// Designed for flexible manual discount assignment per customer per product
 export interface CustomerProductDiscountDocument {
   id: string; // Format: `${customerId}_${productId}` for O(1) point-lookup
   customerId: string;
@@ -253,7 +265,7 @@ export interface CustomerProductDiscountDocument {
   productId: string;
   productTitle: string;
   sku: string;
-  discountPercentage: number; // Custom negotiated discount (e.g. 15 for 15% off)
+  discountPercentage: number;
   assignedByUserId: string;
   assignedByEmail: string;
   notes?: string;
@@ -265,7 +277,7 @@ export interface CustomerDiscountBundleDocument {
   id: string; // customerId
   customerId: string;
   customerName: string;
-  discounts: Record<string, number>; // Fast in-memory map: { [productId]: discountPercentage }
+  discounts: Record<string, number>;
   updatedAt: string;
   updatedByUserId: string;
 }

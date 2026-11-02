@@ -34,7 +34,7 @@ export const Header: React.FC<HeaderProps> = ({ onToggleMobileNav }) => {
             </span>
             <span className="hidden md:inline-flex items-center gap-1 text-[11px] font-bold bg-[#F5B51B] text-[#071F49] px-2 py-0.5 rounded-full shadow-xs">
               <Sparkles className="w-3 h-3 text-[#071F49]" />
-              Phase 1
+              Phase 2
             </span>
           </div>
         </div>

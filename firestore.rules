@@ -35,7 +35,7 @@ service cloud.firestore {
       allow create, update, delete: if isAdmin();
     }
 
-    // System Settings (Store details, invoice counter, business rules):
+    // System Settings (Store details, invoice counter, business rules, summaries):
     // Authenticated staff can read; only admins can modify
     match /settings/{settingId} {
       allow read: if isAuthenticated();
@@ -46,44 +46,59 @@ service cloud.firestore {
     // Append-only for system events, readable only by admin
     match /auditLogs/{logId} {
       allow read: if isAdmin();
-      allow create: if isAuthenticated();
+      allow create: if isAdmin();
       allow update, delete: if false;
     }
 
-    // Business Modules (Prepared for future phases):
-    // Restricted strictly to authenticated and active admin users.
-    // No public read or write access under any circumstances.
-    match /customers/{customerId} {
-      allow read, write: if isAdmin();
-    }
-    match /customerDiscounts/{discountId} {
-      allow read, write: if isAdmin();
-    }
+    // Products collection: Master catalog for books, notebooks, registers, stationery
     match /products/{productId} {
       allow read, write: if isAdmin();
     }
+
+    // Categories collection: Classification hierarchy
     match /categories/{categoryId} {
       allow read, write: if isAdmin();
     }
+
+    // Suppliers collection: Publishing houses, factories, paper mills
     match /suppliers/{supplierId} {
       allow read, write: if isAdmin();
     }
+
+    // Purchases collection: Invoices recording incoming stock
     match /purchases/{purchaseId} {
       allow read, write: if isAdmin();
     }
+
+    // Stock movements: Append-only audit trail recording every inventory increment or decrement
+    match /stockMovements/{movementId} {
+      allow read: if isAdmin();
+      allow create: if isAdmin();
+      allow update, delete: if false;
+    }
+
+    // Future Business Modules (Reserved for subsequent phases):
+    match /customers/{customerId} {
+      allow read, write: if isAdmin();
+    }
+
+    match /customerDiscounts/{discountId} {
+      allow read, write: if isAdmin();
+    }
+
     match /sales/{saleId} {
       allow read, write: if isAdmin();
     }
+
     match /payments/{paymentId} {
       allow read, write: if isAdmin();
     }
+
     match /customerLedger/{ledgerId} {
       allow read, write: if isAdmin();
     }
+
     match /expenses/{expenseId} {
-      allow read, write: if isAdmin();
-    }
-    match /stockMovements/{movementId} {
       allow read, write: if isAdmin();
     }
   }

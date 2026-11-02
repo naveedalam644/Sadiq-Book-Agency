@@ -23,8 +23,18 @@ export function Table<T>({
   emptyMessage = 'No records found.',
   isLoading = false,
 }: TableProps<T>) {
+  const showInitialLoading = isLoading && data.length === 0;
+  const isRefreshing = isLoading && data.length > 0;
+
   return (
-    <div className="w-full overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+    <div className="relative w-full overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+      {/* Background refresh progress indicator */}
+      {isRefreshing && (
+        <div className="absolute top-0 left-0 right-0 h-0.5 bg-slate-100 overflow-hidden z-10">
+          <div className="h-full bg-[#F5B51B] animate-pulse w-full" />
+        </div>
+      )}
+
       <div className="overflow-x-auto">
         <table className="w-full text-left text-sm text-slate-600 border-collapse">
           <thead className="bg-slate-50/80 text-xs uppercase tracking-wider text-slate-600 font-semibold border-b border-slate-200">
@@ -46,12 +56,16 @@ export function Table<T>({
               ))}
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-100 font-normal">
-            {isLoading ? (
+          <tbody
+            className={`divide-y divide-slate-100 font-normal transition-opacity duration-200 ${
+              isRefreshing ? 'opacity-75' : 'opacity-100'
+            }`}
+          >
+            {showInitialLoading ? (
               <tr>
                 <td colSpan={columns.length} className="px-6 py-12 text-center text-slate-400">
                   <div className="inline-flex items-center gap-2">
-                    <div className="w-4 h-4 border-2 border-brand-600 border-t-transparent rounded-full animate-spin" />
+                    <div className="w-4 h-4 border-2 border-[#071F49] border-t-transparent rounded-full animate-spin" />
                     <span>Loading data...</span>
                   </div>
                 </td>
@@ -94,4 +108,3 @@ export function Table<T>({
     </div>
   );
 }
-
