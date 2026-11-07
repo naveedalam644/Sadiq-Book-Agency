@@ -712,7 +712,7 @@ export const Inventory: React.FC = () => {
           }`}
         >
           <Tag className="w-4 h-4 text-[#071F49]" />
-          <span>Price List / ریٹ لسٹ</span>
+          <span>Price List</span>
         </button>
 
         <button

@@ -14,7 +14,7 @@ export const Syllabus: React.FC = () => {
           </NavLink>
           <span>/</span>
           <span className="font-semibold text-slate-800">
-            Syllabus & Course Sets / اسکول سلیبس و کورس سیٹس
+            Syllabus & School Course Sets
           </span>
         </div>
 

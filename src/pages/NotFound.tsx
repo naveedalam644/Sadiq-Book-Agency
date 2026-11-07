@@ -14,7 +14,7 @@ export const NotFound: React.FC = () => {
         404 — Page Not Found
       </h1>
       <p className="mt-2 text-sm text-slate-500 max-w-md">
-        The requested bookstore module or address does not exist or has not yet been unlocked in this phase.
+        The requested bookstore module or address does not exist.
       </p>
 
       <div className="mt-6 flex items-center gap-3">

@@ -107,7 +107,7 @@ export const AddBookToSetModal: React.FC<AddBookToSetModalProps> = ({
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <label className="block text-xs font-bold text-slate-700 mb-1">
-              Subject / مضمون <span className="text-rose-500">*</span>
+              Subject <span className="text-rose-500">*</span>
             </label>
             <select
               value={subject}
@@ -155,7 +155,7 @@ export const AddBookToSetModal: React.FC<AddBookToSetModalProps> = ({
         {/* Product Search from Master Catalog */}
         <div>
           <label className="block text-xs font-bold text-slate-700 mb-1">
-            Search Book from Catalog / کتاب تلاش کریں:
+            Search Book from Catalog:
           </label>
           <SearchInput
             value={searchTerm}
@@ -263,7 +263,7 @@ export const AddBookToSetModal: React.FC<AddBookToSetModalProps> = ({
             disabled={!selectedProduct}
             leftIcon={<Plus className="w-4 h-4 text-[#071F49]" />}
           >
-            Add to Course Set / سیٹ میں شامل کریں
+            Add to Course Set
           </Button>
         </div>
       </form>

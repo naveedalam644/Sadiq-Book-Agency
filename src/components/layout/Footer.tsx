@@ -14,7 +14,7 @@ export const Footer: React.FC = () => {
           <span className="text-slate-300">•</span>
           <span className="inline-flex items-center gap-1 text-[#071F49] bg-[#F5B51B]/20 px-2 py-0.5 rounded-md text-[11px] font-bold border border-[#F5B51B]/50">
             <ShieldCheck className="w-3 h-3 text-[#071F49]" />
-            Phase 1 Foundation
+            Verified Secure System
           </span>
         </div>
 

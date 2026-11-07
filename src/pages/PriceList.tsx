@@ -17,7 +17,7 @@ export const PriceList: React.FC = () => {
             Inventory & Catalog
           </NavLink>
           <span>/</span>
-          <span className="font-semibold text-slate-800">Price List / ریٹ لسٹ</span>
+          <span className="font-semibold text-slate-800">Price List</span>
         </div>
 
         <NavLink

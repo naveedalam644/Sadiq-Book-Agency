@@ -17,6 +17,7 @@ import { PublisherAnalytics } from '../pages/PublisherAnalytics';
 import { Reports } from '../pages/Reports';
 import { Expenses } from '../pages/Expenses';
 import { RoughBill } from '../pages/RoughBill';
+import { SystemStatus } from '../pages/SystemStatus';
 import { NotFound } from '../pages/NotFound';
 
 export const AppRoutes: React.FC = () => {
@@ -43,7 +44,7 @@ export const AppRoutes: React.FC = () => {
             <Route path="/reports" element={<Reports />} />
             <Route path="/expenses" element={<Expenses />} />
             <Route path="/rough-bill" element={<RoughBill />} />
-            <Route path="/system-status" element={<Navigate to="/" replace />} />
+            <Route path="/system-status" element={<SystemStatus />} />
             {/* Catch-all 404 inside layout */}
             <Route path="*" element={<NotFound />} />
           </Route>

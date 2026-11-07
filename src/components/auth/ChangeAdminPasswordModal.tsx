@@ -65,7 +65,7 @@ export const ChangeAdminPasswordModal: React.FC<ChangeAdminPasswordModalProps> =
                 Change Admin Password
               </h3>
               <p className="text-[11px] text-[#F5B51B] font-medium">
-                ایڈمن پاس ورڈ تبدیل کریں
+                Update Security Credentials
               </p>
             </div>
           </div>
@@ -97,7 +97,7 @@ export const ChangeAdminPasswordModal: React.FC<ChangeAdminPasswordModalProps> =
 
           <div className="space-y-1">
             <label className="block font-bold text-slate-800">
-              Current Admin Password / موجودہ پاس ورڈ <span className="text-red-500">*</span>
+              Current Admin Password <span className="text-red-500">*</span>
             </label>
             <input
               type="password"
@@ -111,7 +111,7 @@ export const ChangeAdminPasswordModal: React.FC<ChangeAdminPasswordModalProps> =
 
           <div className="space-y-1">
             <label className="block font-bold text-slate-800">
-              New Admin Password / نیا پاس ورڈ <span className="text-red-500">*</span>
+              New Admin Password <span className="text-red-500">*</span>
             </label>
             <input
               type="password"
@@ -125,7 +125,7 @@ export const ChangeAdminPasswordModal: React.FC<ChangeAdminPasswordModalProps> =
 
           <div className="space-y-1">
             <label className="block font-bold text-slate-800">
-              Confirm New Password / تصدیق نیا پاس ورڈ <span className="text-red-500">*</span>
+              Confirm New Password <span className="text-red-500">*</span>
             </label>
             <input
               type="password"

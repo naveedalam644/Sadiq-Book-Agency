@@ -45,7 +45,7 @@ export const StatCard: React.FC<StatCardProps> = ({
       </div>
 
       <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
-        <span className="truncate text-[11px] text-slate-500 font-medium">{subtitle || 'Awaiting Phase setup'}</span>
+        <span className="truncate text-[11px] text-slate-500 font-medium">{subtitle || 'Live Store Record'}</span>
         {badgeText && (
           <Badge variant={badgeVariant} size="sm">
             {badgeText}

@@ -10,7 +10,8 @@ import {
   FileText,
   Copy,
   ExternalLink,
-  } from 'lucide-react';
+  Trash2,
+} from 'lucide-react';
 import { WhatsAppIcon } from '../components/common/WhatsAppIcon';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
@@ -21,6 +22,7 @@ import { Button } from '../components/common/Button';
 import { Badge } from '../components/common/Badge';
 import { Modal } from '../components/common/Modal';
 import { Table, type Column } from '../components/common/Table';
+import { ClientHandoverCleanupModal } from '../components/maintenance/ClientHandoverCleanupModal';
 
 interface EnvCheckItem {
   key: string;
@@ -37,6 +39,7 @@ export const SystemStatus: React.FC = () => {
   const [testingConnection, setTestingConnection] = useState(false);
   const [connectionResult, setConnectionResult] = useState<string | null>(null);
   const [isRulesModalOpen, setIsRulesModalOpen] = useState(false);
+  const [isCleanupModalOpen, setIsCleanupModalOpen] = useState(false);
 
   // Mask string helper
   const mask = (val?: string) => {
@@ -272,6 +275,57 @@ export const SystemStatus: React.FC = () => {
         />
       </Card>
 
+      {/* Production Client Handover Maintenance & Data Cleanup Card */}
+      <Card className="border-rose-200/90 shadow-sm overflow-hidden">
+        <CardHeader className="bg-gradient-to-r from-rose-50/50 via-white to-amber-50/30">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 bg-rose-600 text-white rounded-xl shadow-xs">
+                <Trash2 className="w-5 h-5" />
+              </div>
+              <div>
+                <CardTitle className="text-base font-extrabold text-[#071F49]">
+                  Client Handover — Purge All Testing Data
+                </CardTitle>
+                <CardDescription>
+                  Permanently clear all test inventory, purchases, sales, customers, rough bills, and syllabus sets before client delivery
+                </CardDescription>
+              </div>
+            </div>
+            <Button
+              variant="danger"
+              size="sm"
+              onClick={() => setIsCleanupModalOpen(true)}
+              leftIcon={<Trash2 className="w-4 h-4" />}
+            >
+              Clean Test Data for Handover
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent className="pt-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+            <div className="p-3 bg-white border border-slate-200 rounded-xl space-y-1">
+              <span className="font-bold text-slate-800 block">Target Collections</span>
+              <p className="text-slate-500 text-[11px]">
+                Purges 20 collections including products, batches, movements, sales, customers, rough bills, and expenses.
+              </p>
+            </div>
+            <div className="p-3 bg-white border border-slate-200 rounded-xl space-y-1">
+              <span className="font-bold text-emerald-800 block">Protected Core</span>
+              <p className="text-slate-500 text-[11px]">
+                Strictly protects Admin User login and the 6 standard core syllabus categories.
+              </p>
+            </div>
+            <div className="p-3 bg-white border border-slate-200 rounded-xl space-y-1">
+              <span className="font-bold text-blue-800 block">Zero Baseline</span>
+              <p className="text-slate-500 text-[11px]">
+                Cleanly resets inventory counters to zero so the client starts with a brand new, pristine bookstore ledger.
+              </p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* WhatsApp Customer Communication System Status */}
       <Card>
         <CardHeader>
@@ -288,7 +342,7 @@ export const SystemStatus: React.FC = () => {
               </div>
             </div>
             <Badge variant="success" size="sm">
-              PHASE W1 ACTIVE
+              ACTIVE
             </Badge>
           </div>
         </CardHeader>
@@ -321,7 +375,7 @@ export const SystemStatus: React.FC = () => {
                   Method 2: Official Meta Cloud API
                 </span>
                 <span className="px-2 py-0.5 bg-slate-200 text-slate-700 text-[10px] font-bold rounded-full">
-                  Phase W2 Sandbox Ready
+                  Cloud API Ready
                 </span>
               </div>
               <p className="text-xs text-slate-600">
@@ -494,6 +548,12 @@ service cloud.firestore {
 }`}</pre>
         </div>
       </Modal>
+
+      {/* Client Handover Cleanup Modal */}
+      <ClientHandoverCleanupModal
+        isOpen={isCleanupModalOpen}
+        onClose={() => setIsCleanupModalOpen(false)}
+      />
     </div>
   );
 };

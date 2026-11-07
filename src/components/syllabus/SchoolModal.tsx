@@ -112,7 +112,7 @@ export const SchoolModal: React.FC<SchoolModalProps> = ({
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title={editingSchool ? 'Edit School / اسکول ایڈٹ کریں' : 'Add New School / نیا اسکول شامل کریں'}
+      title={editingSchool ? 'Edit School' : 'Add New School'}
       size="md"
     >
       <form onSubmit={handleSubmit} className="space-y-4">
@@ -126,7 +126,7 @@ export const SchoolModal: React.FC<SchoolModalProps> = ({
         {/* Board Selection */}
         <div>
           <label className="block text-xs font-bold text-slate-700 mb-1">
-            Affiliated Board / الحاق شدہ تعلیمی بورڈ <span className="text-rose-500">*</span>
+            Affiliated Board <span className="text-rose-500">*</span>
           </label>
           <select
             value={boardId}
@@ -147,7 +147,7 @@ export const SchoolModal: React.FC<SchoolModalProps> = ({
         {/* School Name */}
         <div>
           <label className="block text-xs font-bold text-slate-700 mb-1">
-            School Name / اسکول کا نام <span className="text-rose-500">*</span>
+            School Name <span className="text-rose-500">*</span>
           </label>
           <input
             type="text"

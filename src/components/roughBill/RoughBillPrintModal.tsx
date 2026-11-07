@@ -29,7 +29,7 @@ export const RoughBillPrintModal: React.FC<RoughBillPrintModalProps> = ({
   };
 
   const handleShareWhatsApp = () => {
-    const headerTitle = isPublisherOrder ? '📦 PURCHASE ORDER / پبلشر آرڈر لسٹ' : '📋 ESTIMATE / QUOTATION (تخمینہ بل)';
+    const headerTitle = isPublisherOrder ? '📦 PURCHASE ORDER' : '📋 ESTIMATE / QUOTATION';
     const lines = [
       `*${headerTitle}*`,
       `*SADIQ BOOK AGENCY*`,
@@ -39,7 +39,7 @@ export const RoughBillPrintModal: React.FC<RoughBillPrintModalProps> = ({
       bill.phone ? `*Phone:* ${bill.phone}` : null,
       `*Date:* ${bill.date}`,
       `--------------------------------`,
-      `*ITEMS / کتب:*`,
+      `*ITEMS:*`,
       ...bill.items.map(
         (i, idx) =>
           `${idx + 1}. ${i.title} (${i.publisherName || 'SBA'})\n   Qty: ${i.quantity} x Rs. ${i.unitPrice}${i.discountPercent ? ` (-${i.discountPercent}%)` : ''} = *Rs. ${i.lineTotal}*`
@@ -78,7 +78,7 @@ export const RoughBillPrintModal: React.FC<RoughBillPrintModalProps> = ({
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title={isPublisherOrder ? 'Publisher Order Draft / پبلشر آرڈر' : 'Customer Quotation / تخمینہ بل'}
+      title={isPublisherOrder ? 'Publisher Order Draft' : 'Customer Quotation'}
       size="lg"
     >
       <div className="space-y-4">
@@ -94,8 +94,8 @@ export const RoughBillPrintModal: React.FC<RoughBillPrintModalProps> = ({
             </p>
             <div className="inline-block mt-2 px-3 py-1 bg-amber-50 text-amber-900 border border-amber-300 rounded-lg text-xs font-black uppercase tracking-wider">
               {isPublisherOrder
-                ? '📦 PURCHASE ORDER DRAFT (آرڈر لسٹ)'
-                : '📋 ESTIMATE / QUOTATION — NOT A TAX INVOICE (غیر رسمی تخمینہ بل)'}
+                ? '📦 PURCHASE ORDER DRAFT'
+                : '📋 ESTIMATE / QUOTATION — NOT A TAX INVOICE'}
             </div>
           </div>
 
@@ -191,7 +191,7 @@ export const RoughBillPrintModal: React.FC<RoughBillPrintModalProps> = ({
           <div className="p-2 bg-amber-50/80 border border-amber-200 rounded-xl flex items-center gap-2 text-[11px] text-amber-900">
             <ShieldAlert className="w-4 h-4 text-amber-700 shrink-0" />
             <span>
-              یہ بل تخمینہ (Rough Estimate) ہے۔ اس سے دکان کا کوئی اسٹاک یا کسٹمر کا کھاتہ کم نہیں کیا گیا۔
+              Notice: This is an informal estimate/order draft. It strictly does not alter physical store inventory or customer ledger balances.
             </span>
           </div>
         </div>

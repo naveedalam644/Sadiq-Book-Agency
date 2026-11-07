@@ -187,7 +187,7 @@ export const PriceListTable: React.FC<PriceListTableProps> = ({
 
     const publisherNameStr = selectedPublisherId !== 'all'
       ? (publishers.find((p) => p.id === selectedPublisherId)?.name || 'Selected Publisher')
-      : 'All Publishers / مکمل کتب و رجسٹرز فہرست';
+      : 'All Publishers';
 
     const seriesNameStr = selectedSeriesId !== 'all'
       ? (seriesList.find((s) => s.id === selectedSeriesId)?.name || 'Selected Series')
@@ -248,7 +248,7 @@ export const PriceListTable: React.FC<PriceListTableProps> = ({
         <body>
           <div class="header">
             <h1 class="title">SADIQ BOOK AGENCY</h1>
-            <div class="subtitle">Complete Price List & Trade Rate Catalog / ریٹ لسٹ</div>
+            <div class="subtitle">Complete Price List & Trade Rate Catalog</div>
           </div>
           <div class="meta">
             <div>
@@ -429,7 +429,7 @@ export const PriceListTable: React.FC<PriceListTableProps> = ({
             </div>
             <div>
               <h2 className="text-lg font-black text-[#071F49]">
-                Price List & Rate Catalog / ریٹ لسٹ
+                Price List & Rate Catalog
               </h2>
               <p className="text-xs text-slate-500">
                 Publisher &gt; Series structured prices with instant shop stock assignment & historical khata protection
@@ -593,14 +593,14 @@ export const PriceListTable: React.FC<PriceListTableProps> = ({
           <div className="sm:col-span-4">
             <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-1">
               <Building2 className="w-3.5 h-3.5 text-[#071F49]" />
-              1. Publisher / پبلشر منتخب کریں:
+              1. Publisher:
             </label>
             <select
               value={selectedPublisherId}
               onChange={(e) => setSelectedPublisherId(e.target.value)}
               className="w-full px-3 py-2 text-xs font-semibold text-slate-800 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-[#071F49] focus:outline-none"
             >
-              <option value="all">All Publishers / تمام پبلشرز</option>
+              <option value="all">All Publishers</option>
               {publishers.map((pub) => (
                 <option key={pub.id} value={pub.id}>
                   {pub.name}
@@ -613,7 +613,7 @@ export const PriceListTable: React.FC<PriceListTableProps> = ({
           <div className="sm:col-span-4">
             <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-1">
               <Layers className="w-3.5 h-3.5 text-[#071F49]" />
-              2. Series / سیریز منتخب کریں:
+              2. Series:
             </label>
             <select
               value={selectedSeriesId}
@@ -623,8 +623,8 @@ export const PriceListTable: React.FC<PriceListTableProps> = ({
             >
               <option value="all">
                 {selectedPublisherId === 'all'
-                  ? 'First select a publisher / پہلے پبلشر منتخب کریں'
-                  : 'All Series in Publisher / پبلشر کی تمام سیریز'}
+                  ? 'First select a publisher'
+                  : 'All Series in Publisher'}
               </option>
               {seriesList.map((ser) => (
                 <option key={ser.id} value={ser.id}>

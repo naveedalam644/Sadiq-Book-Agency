@@ -228,7 +228,7 @@ export const SyllabusManager: React.FC = () => {
   const bookColumns: Column<SyllabusBookItem>[] = [
     {
       key: 'subject',
-      header: 'Subject / مضمون',
+      header: 'Subject',
       render: (row) => (
         <span className="font-bold text-xs text-[#071F49] bg-slate-100 px-2.5 py-1 rounded-lg border border-slate-200">
           {row.subject || 'General'}
@@ -237,7 +237,7 @@ export const SyllabusManager: React.FC = () => {
     },
     {
       key: 'title',
-      header: 'Book Title / کتاب کا نام',
+      header: 'Book Title',
       render: (row) => (
         <div>
           <span className="font-bold text-sm text-slate-900 block">{row.title}</span>
@@ -325,7 +325,7 @@ export const SyllabusManager: React.FC = () => {
           </div>
           <div>
             <h1 className="text-xl font-black text-[#071F49]">
-              Syllabus & School Course Sets / اسکول سلیبس و کورس سیٹس
+              Syllabus & School Course Sets
             </h1>
             <p className="text-xs text-slate-500">
               Board &gt; School &gt; Class book sets with 1-click POS billing & automatic publisher stock deduction
@@ -345,7 +345,7 @@ export const SyllabusManager: React.FC = () => {
             }`}
           >
             <BookOpen className="w-3.5 h-3.5" />
-            Course Sets (کورس سیٹس)
+            Course Sets
           </button>
           <button
             type="button"
@@ -385,7 +385,7 @@ export const SyllabusManager: React.FC = () => {
                 <div className="flex items-center justify-between mb-1">
                   <label className="text-xs font-bold text-slate-700 flex items-center gap-1">
                     <Building className="w-3.5 h-3.5 text-[#071F49]" />
-                    1. Educational Board / تعلیمی بورڈ:
+                    1. Educational Board:
                   </label>
                   <button
                     type="button"
@@ -417,7 +417,7 @@ export const SyllabusManager: React.FC = () => {
                 <div className="flex items-center justify-between mb-1">
                   <label className="text-xs font-bold text-slate-700 flex items-center gap-1">
                     <School className="w-3.5 h-3.5 text-[#071F49]" />
-                    2. Affiliated School / اسکول منتخب کریں:
+                    2. Affiliated School:
                   </label>
                   <button
                     type="button"
@@ -451,7 +451,7 @@ export const SyllabusManager: React.FC = () => {
             {/* Step 3: Fast Class Selector Pills */}
             <div className="border-t border-slate-100 pt-3">
               <span className="text-xs font-bold text-slate-500 mb-2 block">
-                3. Class / کلاس منتخب کریں (NUR, KG, 1ST, 2ND, 3RD...):
+                3. Class (NUR, KG, 1ST, 2ND, 3RD...):
               </span>
               <div className="flex items-center gap-1.5 flex-wrap">
                 {STANDARD_CLASSES.map((cls) => {
@@ -524,7 +524,7 @@ export const SyllabusManager: React.FC = () => {
                     disabled={setItems.length === 0}
                     leftIcon={<Receipt className="w-3.5 h-3.5 text-[#071F49]" />}
                   >
-                    Bill this Set in POS / بل بنائیں
+                    Bill this Set in POS
                   </Button>
                 </div>
               </div>
@@ -585,7 +585,7 @@ export const SyllabusManager: React.FC = () => {
           <div className="p-4 border-b border-slate-200 flex items-center justify-between">
             <div>
               <h2 className="text-base font-black text-[#071F49]">
-                Educational Boards Directory / تعلیمی بورڈز
+                Educational Boards Directory
               </h2>
               <p className="text-xs text-slate-500">
                 Boards with which schools in your area are affiliated
@@ -652,7 +652,7 @@ export const SyllabusManager: React.FC = () => {
           <div className="p-4 border-b border-slate-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
             <div>
               <h2 className="text-base font-black text-[#071F49]">
-                Registered Schools Directory / اسکولز کی فہرست
+                Registered Schools Directory
               </h2>
               <p className="text-xs text-slate-500">
                 Schools organized by their affiliated educational boards

@@ -5,7 +5,6 @@ import {
   Receipt,
   ArrowRight,
   Sparkles,
-  Layers,
   AlertTriangle,
   Building2,
   Package,
@@ -15,6 +14,7 @@ import {
   Eye,
   Calendar,
   Clock,
+  Trash2,
 } from 'lucide-react';
 import { WhatsAppIcon } from '../components/common/WhatsAppIcon';
 import { useAuth } from '../hooks/useAuth';
@@ -25,6 +25,7 @@ import { AlertBanner } from '../components/feedback/AlertBanner';
 import { EmptyState } from '../components/feedback/EmptyState';
 import { PurchaseDetailModal } from '../components/purchases/PurchaseDetailModal';
 import { ProductDetailModal } from '../components/inventory/ProductDetailModal';
+import { ClientHandoverCleanupModal } from '../components/maintenance/ClientHandoverCleanupModal';
 import { fetchDashboardData, type DashboardData } from '../services/dashboardService';
 import { getOverdueReceivablesSummary, type OverdueReceivablesSummary } from '../services/dueDateService';
 import type { PurchaseDocument, ProductDocument, CustomerDocument } from '../types/database';
@@ -54,6 +55,7 @@ export const Dashboard: React.FC = () => {
 
   const [viewingPurchase, setViewingPurchase] = useState<PurchaseDocument | null>(null);
   const [viewingProduct, setViewingProduct] = useState<ProductDocument | null>(null);
+  const [isCleanupModalOpen, setIsCleanupModalOpen] = useState(false);
   const [overdueSummary, setOverdueSummary] = useState<OverdueReceivablesSummary | null>(null);
   const [loadingOverdue, setLoadingOverdue] = useState(true);
   const [selectedOverdueInv, setSelectedOverdueInv] = useState<OverdueReceivablesSummary['overdueInvoices'][0] | null>(null);
@@ -73,43 +75,34 @@ export const Dashboard: React.FC = () => {
     }
   };
 
-  useEffect(() => {
-    let isMounted = true;
+  const loadDashboardData = () => {
     fetchDashboardData()
       .then((data) => {
-        if (isMounted) {
-          setDashboardData({
-            summary: data.summary,
-            recentPurchases: data.recentPurchases,
-            lowStockProducts: data.lowStockProducts,
-            isLoading: false,
-          });
-        }
+        setDashboardData({
+          summary: data.summary,
+          recentPurchases: data.recentPurchases,
+          lowStockProducts: data.lowStockProducts,
+          isLoading: false,
+        });
       })
       .catch((err) => {
         console.error('Failed to load dashboard data:', err);
-        if (isMounted) {
-          setDashboardData((prev) => ({ ...prev, isLoading: false }));
-        }
+        setDashboardData((prev) => ({ ...prev, isLoading: false }));
       });
 
     getOverdueReceivablesSummary()
       .then((data) => {
-        if (isMounted) {
-          setOverdueSummary(data);
-          setLoadingOverdue(false);
-        }
+        setOverdueSummary(data);
+        setLoadingOverdue(false);
       })
       .catch((err) => {
         console.error('Failed to load overdue summary:', err);
-        if (isMounted) {
-          setLoadingOverdue(false);
-        }
+        setLoadingOverdue(false);
       });
+  };
 
-    return () => {
-      isMounted = false;
-    };
+  useEffect(() => {
+    loadDashboardData();
   }, []);
 
   const { summary, recentPurchases, lowStockProducts, isLoading } = dashboardData;
@@ -138,7 +131,7 @@ export const Dashboard: React.FC = () => {
                 </span>
                 <span className="inline-flex items-center gap-1 text-[11px] font-bold bg-[#F5B51B] text-[#071F49] px-2 py-0.5 rounded-full">
                   <Sparkles className="w-3 h-3 text-[#071F49]" />
-                  Phase 2 Active
+                  Live System
                 </span>
               </div>
 
@@ -168,6 +161,16 @@ export const Dashboard: React.FC = () => {
               <Plus className="w-4 h-4 text-[#071F49]" />
               <span>New Purchase</span>
             </Link>
+
+            <button
+              type="button"
+              onClick={() => setIsCleanupModalOpen(true)}
+              className="inline-flex items-center gap-2 px-3 py-2.5 rounded-xl text-xs font-bold bg-[#04122C]/70 hover:bg-[#04122C] text-rose-200 hover:text-white border border-[#0E2E70] transition shadow-md active:scale-95 cursor-pointer"
+              title="Clean all dummy testing data for client handover"
+            >
+              <Trash2 className="w-4 h-4 text-rose-400" />
+              <span>Clean Test Data</span>
+            </button>
           </div>
         </div>
       </div>
@@ -381,7 +384,6 @@ export const Dashboard: React.FC = () => {
                 icon={<Receipt className="w-8 h-8 text-[#071F49]" />}
                 title="No Purchases Recorded Yet"
                 description="Record your first supplier stock intake to populate purchase orders, update inventory quantities, and log immutable movement records."
-                phaseBadge="Phase 2 Ready"
               />
             ) : (
               <div className="divide-y divide-slate-100 overflow-x-auto">
@@ -550,75 +552,6 @@ export const Dashboard: React.FC = () => {
         </Link>
       </div>
 
-      {/* 5. SADIQ BOOK AGENCY IMPLEMENTATION ROADMAP */}
-      <Card className="rounded-2xl border border-slate-200/90 shadow-sm">
-        <CardHeader>
-          <div className="flex items-center gap-2.5">
-            <Layers className="w-5 h-5 text-[#071F49]" />
-            <div>
-              <CardTitle className="text-base font-bold text-[#071F49]">
-                Sadiq Book Agency Phased Architecture
-              </CardTitle>
-              <CardDescription>
-                Designed for high-precision books, notebooks, registers, and customer Khata accounting
-              </CardDescription>
-            </div>
-          </div>
-          <Badge variant="gold" size="sm">Phase 2 Active</Badge>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
-            <div className="p-3.5 rounded-xl bg-white border border-slate-200">
-              <div className="flex items-center justify-between mb-1.5">
-                <span className="font-bold text-slate-800">Phase 1: Foundation</span>
-                <span className="text-[10px] text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full font-semibold">
-                  Complete
-                </span>
-              </div>
-              <p className="text-slate-500 text-[11px] leading-relaxed">
-                Branding + Firebase Auth + Security Rules + Responsive Shell.
-              </p>
-            </div>
-
-            <div className="p-3.5 rounded-xl bg-[#071F49] text-white border border-[#0E2E70]">
-              <div className="flex items-center justify-between mb-1.5">
-                <span className="font-bold text-white">Phase 2: Inventory</span>
-                <span className="text-[10px] font-bold bg-[#F5B51B] text-[#071F49] px-2 py-0.5 rounded-full">
-                  Active
-                </span>
-              </div>
-              <p className="text-slate-300 text-[11px] leading-relaxed">
-                Books, Notebooks, Registers, Suppliers, Purchases, and Stock Logs.
-              </p>
-            </div>
-
-            <div className="p-3.5 rounded-xl bg-white border border-slate-200">
-              <div className="flex items-center justify-between mb-1.5">
-                <span className="font-bold text-slate-800">Phase 3: Customer Khata</span>
-                <span className="text-[10px] text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full font-semibold">
-                  Upcoming
-                </span>
-              </div>
-              <p className="text-slate-500 text-[11px] leading-relaxed">
-                Wholesaler, Parchon, Marketshop (% discounts) & Udhaar ledger.
-              </p>
-            </div>
-
-            <div className="p-3.5 rounded-xl bg-white border border-slate-200">
-              <div className="flex items-center justify-between mb-1.5">
-                <span className="font-bold text-slate-800">Phase 4-7: POS & Reports</span>
-                <span className="text-[10px] text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full font-semibold">
-                  Upcoming
-                </span>
-              </div>
-              <p className="text-slate-500 text-[11px] leading-relaxed">
-                Thermal POS billing, daily cash closing, P&L statements, and backups.
-              </p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
       {/* Modals for viewing details directly from dashboard */}
       <PurchaseDetailModal
         isOpen={Boolean(viewingPurchase)}
@@ -652,6 +585,15 @@ export const Dashboard: React.FC = () => {
           })}
         />
       )}
+
+      {/* Client Handover Cleanup Modal */}
+      <ClientHandoverCleanupModal
+        isOpen={isCleanupModalOpen}
+        onClose={() => setIsCleanupModalOpen(false)}
+        onCompleted={() => {
+          loadDashboardData();
+        }}
+      />
     </div>
   );
 };

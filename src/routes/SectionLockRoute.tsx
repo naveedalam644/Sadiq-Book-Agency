@@ -60,7 +60,7 @@ export const SectionLockRoute: React.FC = () => {
     setError(null);
 
     if (!password.trim()) {
-      setError('Please enter Admin Password / ایڈمن پاس ورڈ درج کریں۔');
+      setError('Please enter Admin Password.');
       return;
     }
 
@@ -68,7 +68,7 @@ export const SectionLockRoute: React.FC = () => {
     if (unlocked) {
       setIsSuccess(true);
     } else {
-      setError('Ghalat Admin Password! (Incorrect Password). Please try again.');
+      setError('Incorrect Admin Password. Please try again.');
       setPassword('');
     }
   };
@@ -83,7 +83,7 @@ export const SectionLockRoute: React.FC = () => {
           </div>
           <h2 className="text-xl font-black tracking-tight">Admin Password Required</h2>
           <p className="text-xs text-[#F5B51B] font-semibold mt-1">
-            محفوظ سیکشن — ایڈمن پاس ورڈ درکار ہے
+            Protected Section — Authorization Required
           </p>
         </div>
 
@@ -95,7 +95,7 @@ export const SectionLockRoute: React.FC = () => {
             </span>
             <p className="text-base font-extrabold text-[#071F49]">{sectionName}</p>
             <p className="text-xs text-slate-500 pt-1">
-              Is section mein confidential dukan ka record hai. Access karne ke liye Admin Password enter karein.
+              This section contains confidential store records. Enter the Admin Password to continue.
             </p>
           </div>
 
@@ -153,7 +153,7 @@ export const SectionLockRoute: React.FC = () => {
               onChange={(e) => setRememberSession(e.target.checked)}
               className="w-4 h-4 text-[#071F49] rounded border-slate-300 focus:ring-[#071F49]"
             />
-            <span>Keep unlocked for this session (اس سیشن کے لیے انلاک رکھیں)</span>
+            <span>Keep unlocked for this browser session</span>
           </label>
 
           <button

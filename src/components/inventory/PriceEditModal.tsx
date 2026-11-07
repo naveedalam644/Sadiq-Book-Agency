@@ -128,7 +128,7 @@ export const PriceEditModal: React.FC<PriceEditModalProps> = ({
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title="Quick Price Update / ریٹ تبدیل کریں"
+      title="Quick Price Update"
       size="lg"
     >
       <form onSubmit={handleSubmit} className="space-y-5">
@@ -322,9 +322,9 @@ export const PriceEditModal: React.FC<PriceEditModalProps> = ({
         <div className="p-3 bg-amber-50/90 border border-amber-200 rounded-xl flex items-start gap-2.5 text-xs text-amber-900">
           <ShieldCheck className="w-5 h-5 text-amber-700 shrink-0 mt-0.5" />
           <div>
-            <span className="font-bold block">تاریخی کھاتہ و ادھار کا تحفظ (Past Udhar Guarantee):</span>
+            <span className="font-bold block">Past Udhar Guarantee & Ledger Protection:</span>
             <p className="mt-0.5 text-amber-800 leading-relaxed">
-              جن گاہکوں نے ماضی میں ادھار لیا تھا، ان کا حساب سابقہ ریٹ پر ہی رہے گا اور کھاتہ تبدیل نہیں ہوگا۔ یہ نیا ریٹ دکان کے موجودہ فزیکل اسٹاک کی آئندہ فروخت اور نئے بلز پر نافذ ہوگا۔
+              Customers who previously purchased on credit retain their original recorded rates. The newly assigned price applies strictly to current physical store stock and future sales transactions.
             </p>
           </div>
         </div>
@@ -345,7 +345,7 @@ export const PriceEditModal: React.FC<PriceEditModalProps> = ({
             isLoading={isSubmitting}
             leftIcon={<CheckCircle2 className="w-4 h-4 text-[#071F49]" />}
           >
-            Save & Assign New Price / نیا ریٹ محفوظ کریں
+            Save & Assign New Price
           </Button>
         </div>
       </form>

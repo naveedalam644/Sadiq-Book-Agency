@@ -352,7 +352,7 @@ export const RoughBillModal: React.FC<RoughBillModalProps> = ({
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title={editingBill ? 'Edit Rough Bill / ایڈٹ رف بل' : 'Create Rough Bill / نیا رف بل یا پبلشر آرڈر'}
+      title={editingBill ? 'Edit Rough Bill' : 'Create Rough Bill'}
       size="xl"
     >
       <form onSubmit={handleSubmit} className="space-y-4">
@@ -367,7 +367,7 @@ export const RoughBillModal: React.FC<RoughBillModalProps> = ({
                 : 'text-slate-600 hover:text-slate-900'
             }`}
           >
-            📋 Customer / School Estimate (گاہک تخمینہ بل)
+            📋 Customer / School Estimate
           </button>
           <button
             type="button"
@@ -378,7 +378,7 @@ export const RoughBillModal: React.FC<RoughBillModalProps> = ({
                 : 'text-slate-600 hover:text-slate-900'
             }`}
           >
-            📦 Publisher Order List (پبلشر آرڈر لسٹ)
+            📦 Publisher Order List
           </button>
         </div>
 
@@ -441,7 +441,7 @@ export const RoughBillModal: React.FC<RoughBillModalProps> = ({
             <div className="flex items-center gap-2">
               <span className="w-2.5 h-2.5 rounded-full bg-[#F5B51B]"></span>
               <h3 className="text-xs font-extrabold text-[#071F49] uppercase tracking-wider">
-                Select Products From Shop Stock (دکان کے اسٹاک سے آئٹم منتخب کریں)
+                Select Products From Shop Stock
               </h3>
             </div>
 
@@ -484,7 +484,7 @@ export const RoughBillModal: React.FC<RoughBillModalProps> = ({
                 }`}
               >
                 <BookOpen className="w-3.5 h-3.5" />
-                <span>Books (کتب)</span>
+                <span>Books</span>
               </button>
 
               <button
@@ -500,7 +500,7 @@ export const RoughBillModal: React.FC<RoughBillModalProps> = ({
                 }`}
               >
                 <Layers className="w-3.5 h-3.5" />
-                <span>Notebooks (کاپیاں)</span>
+                <span>Notebooks</span>
               </button>
 
               <button
@@ -516,7 +516,7 @@ export const RoughBillModal: React.FC<RoughBillModalProps> = ({
                 }`}
               >
                 <Package className="w-3.5 h-3.5" />
-                <span>Registers (رجسٹرز)</span>
+                <span>Registers</span>
               </button>
             </div>
           )}
@@ -527,7 +527,7 @@ export const RoughBillModal: React.FC<RoughBillModalProps> = ({
               {/* Step 1: Publisher Dropdown */}
               <div>
                 <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">
-                  1. Publisher (پبلشر) *
+                  1. Publisher *
                 </label>
                 <select
                   value={selectedPublisherId}
@@ -537,7 +537,7 @@ export const RoughBillModal: React.FC<RoughBillModalProps> = ({
                   }}
                   className="w-full px-2.5 py-1.5 text-xs text-slate-800 border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#071F49] bg-white font-medium"
                 >
-                  <option value="">-- Select Publisher / پبلشر منتخب کریں --</option>
+                  <option value="">-- Select Publisher --</option>
                   {publishersList.map((pub) => (
                     <option key={pub.id} value={pub.id}>
                       {pub.name}
@@ -549,7 +549,7 @@ export const RoughBillModal: React.FC<RoughBillModalProps> = ({
               {/* Step 2: Series Dropdown */}
               <div>
                 <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">
-                  2. Series (سیریز)
+                  2. Series
                 </label>
                 <select
                   disabled={!selectedPublisherId}
@@ -560,7 +560,7 @@ export const RoughBillModal: React.FC<RoughBillModalProps> = ({
                   }}
                   className="w-full px-2.5 py-1.5 text-xs text-slate-800 border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#071F49] bg-white disabled:bg-slate-100 disabled:text-slate-400 font-medium"
                 >
-                  <option value="all">All Series / تمام سیریز</option>
+                  <option value="all">All Series</option>
                   {seriesList.map((ser) => (
                     <option key={ser.id} value={ser.id}>
                       {ser.name}
@@ -572,7 +572,7 @@ export const RoughBillModal: React.FC<RoughBillModalProps> = ({
               {/* Step 3: Product (Book) Dropdown from Stock */}
               <div>
                 <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">
-                  3. Select Book (دکان کی کتاب) *
+                  3. Select Book *
                 </label>
                 <select
                   disabled={!selectedPublisherId || isLoadingProducts}
@@ -607,7 +607,7 @@ export const RoughBillModal: React.FC<RoughBillModalProps> = ({
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-slate-50 p-3 rounded-xl border border-slate-200">
               <div>
                 <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">
-                  Size (سائز)
+                  Size
                 </label>
                 <select
                   value={selectedNbSize}
@@ -625,7 +625,7 @@ export const RoughBillModal: React.FC<RoughBillModalProps> = ({
 
               <div>
                 <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">
-                  Sheet Count (ورق / صفحات)
+                  Sheet Count
                 </label>
                 <select
                   value={selectedSheetCount}
@@ -747,7 +747,7 @@ export const RoughBillModal: React.FC<RoughBillModalProps> = ({
                 {/* Quantity to add */}
                 <div>
                   <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">
-                    Quantity (کتنی تعداد) *
+                    Quantity *
                   </label>
                   <input
                     type="number"
@@ -810,7 +810,7 @@ export const RoughBillModal: React.FC<RoughBillModalProps> = ({
         {/* ========================================================================= */}
         <div className="border border-slate-200 rounded-xl overflow-hidden bg-white shadow-xs">
           <div className="bg-slate-100 px-3 py-2 border-b border-slate-200 flex items-center justify-between text-xs font-bold text-slate-700">
-            <span>Rough Bill Items List (شامل شدہ کتابیں و کاپیاں)</span>
+            <span>Rough Bill Items List</span>
             <span className="text-[11px] text-slate-500 font-medium">
               Total Items: {items.length} ({totals.totalQuantity} units)
             </span>
@@ -834,7 +834,7 @@ export const RoughBillModal: React.FC<RoughBillModalProps> = ({
                 {items.length === 0 ? (
                   <tr>
                     <td colSpan={8} className="p-8 text-center text-slate-400">
-                      کوئی آئٹم شامل نہیں ہے۔ اوپر دیئے گئے پبلشر و سیریز فلو سے پروڈکٹ منتخب کر کے شامل کریں۔
+                      No items added yet. Select products from the shop stock flow above.
                     </td>
                   </tr>
                 ) : (
@@ -950,9 +950,9 @@ export const RoughBillModal: React.FC<RoughBillModalProps> = ({
         <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-900 flex items-start gap-2">
           <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
           <div>
-            <p className="font-bold">یاد دہانی برائے دکان اسٹاک و کھاتہ:</p>
+            <p className="font-bold">Store Inventory & Ledger Notice:</p>
             <p className="text-[11px] text-emerald-800 mt-0.5">
-              یہ صرف ایک رف بل یا تخمینہ لسٹ ہے۔ اسے محفوظ کرنے سے دکان کے فزیکل اسٹاک، کسٹمر کے کھاتے یا کیش کلوزنگ پر بالکل کوئی اثر نہیں پڑے گا۔
+              This is an informal estimate/order list. Saving it will strictly not deduct store inventory or affect customer Khata balances.
             </p>
           </div>
         </div>

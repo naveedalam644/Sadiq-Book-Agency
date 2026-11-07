@@ -101,7 +101,7 @@ export const RoughBill: React.FC = () => {
   const columns: Column<RoughBillDocument>[] = [
     {
       key: 'billNo',
-      header: 'Bill No / تاریخ',
+      header: 'Bill No & Date',
       render: (row) => (
         <div>
           <span className="font-mono font-bold text-xs text-[#071F49] block">
@@ -209,7 +209,7 @@ export const RoughBill: React.FC = () => {
           </NavLink>
           <span>/</span>
           <span className="font-semibold text-slate-800">
-            Rough Bills & Quotations / رف بل و آرڈر لسٹ
+            Rough Bills & Quotations
           </span>
         </div>
 
@@ -233,7 +233,7 @@ export const RoughBill: React.FC = () => {
           </div>
           <div>
             <h1 className="text-xl font-black text-[#071F49]">
-              Rough Bills & Quotations / رف بل و پبلشر آرڈر
+              Rough Bills & Quotations
             </h1>
             <p className="text-xs text-slate-500">
               Create customer quotations or publisher purchase orders without affecting shop inventory
@@ -250,7 +250,7 @@ export const RoughBill: React.FC = () => {
           }}
           leftIcon={<Plus className="w-4 h-4 text-[#071F49]" />}
         >
-          Create New Rough Bill / نیا رف بل بنائیں
+          Create New Rough Bill
         </Button>
       </div>
 

@@ -181,7 +181,7 @@ export const SchoolSyllabusSetModal: React.FC<SchoolSyllabusSetModalProps> = ({
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title="Load School Course Set into Bill / اسکول سلیبس سیٹ لوڈ کریں"
+      title="Load School Course Set into Bill"
       size="lg"
     >
       <div className="space-y-4">
@@ -190,7 +190,7 @@ export const SchoolSyllabusSetModal: React.FC<SchoolSyllabusSetModalProps> = ({
           <div>
             <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-1">
               <Building className="w-3.5 h-3.5 text-[#071F49]" />
-              1. Select Board / تعلیمی بورڈ:
+              1. Select Board:
             </label>
             <select
               value={selectedBoardId}
@@ -208,7 +208,7 @@ export const SchoolSyllabusSetModal: React.FC<SchoolSyllabusSetModalProps> = ({
           <div>
             <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-1">
               <School className="w-3.5 h-3.5 text-[#071F49]" />
-              2. Select School / اسکول:
+              2. Select School:
             </label>
             <select
               value={selectedSchoolId}
@@ -229,7 +229,7 @@ export const SchoolSyllabusSetModal: React.FC<SchoolSyllabusSetModalProps> = ({
         {/* Step 3: Fast Class Selector */}
         <div>
           <span className="text-xs font-bold text-slate-600 mb-1.5 block">
-            3. Select Class / کلاس منتخب کریں:
+            3. Select Class:
           </span>
           <div className="flex items-center gap-1.5 flex-wrap">
             {STANDARD_CLASSES.map((cls) => {

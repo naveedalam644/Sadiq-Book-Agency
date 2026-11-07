@@ -48,7 +48,7 @@ export const AdminSectionLockModal: React.FC<AdminSectionLockModalProps> = ({
     setError(null);
 
     if (!password.trim()) {
-      setError('Please enter Admin Password / ایڈمن پاس ورڈ درج کریں۔');
+      setError('Please enter Admin Password');
       return;
     }
 
@@ -86,7 +86,7 @@ export const AdminSectionLockModal: React.FC<AdminSectionLockModalProps> = ({
                 Admin Password Required
               </h3>
               <p className="text-[11px] text-[#F5B51B] font-medium">
-                محفوظ سیکشن — ایڈمن پاس ورڈ درکار ہے
+                Confidential Store Section — Authorized Personnel Only
               </p>
             </div>
           </div>
@@ -176,7 +176,7 @@ export const AdminSectionLockModal: React.FC<AdminSectionLockModalProps> = ({
               onChange={(e) => setRememberSession(e.target.checked)}
               className="w-4 h-4 text-[#071F49] rounded border-slate-300 focus:ring-[#071F49]"
             />
-            <span>Keep unlocked for this session (اس سیشن کے لیے انلاک رکھیں)</span>
+            <span>Keep unlocked for this session</span>
           </label>
 
           {/* Action Buttons */}

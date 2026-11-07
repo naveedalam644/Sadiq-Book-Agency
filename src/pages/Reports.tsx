@@ -641,7 +641,7 @@ export const Reports: React.FC = () => {
           <div className="flex items-center gap-2">
             <h1 className="text-2xl font-black text-[#071F49] tracking-tight">Financial Reports</h1>
             <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-[#F5B51B]/20 text-[#071F49] border border-[#F5B51B]/40">
-              Phase 6 Active
+              Live Reports
             </span>
           </div>
           <p className="text-xs text-slate-500 mt-1">

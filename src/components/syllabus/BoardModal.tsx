@@ -95,7 +95,7 @@ export const BoardModal: React.FC<BoardModalProps> = ({
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title={editingBoard ? 'Edit Educational Board / بورڈ ایڈٹ کریں' : 'Add Educational Board / نیا بورڈ شامل کریں'}
+      title={editingBoard ? 'Edit Educational Board' : 'Add Educational Board'}
       size="md"
     >
       <form onSubmit={handleSubmit} className="space-y-4">
@@ -108,7 +108,7 @@ export const BoardModal: React.FC<BoardModalProps> = ({
 
         <div>
           <label className="block text-xs font-bold text-slate-700 mb-1">
-            Board Name / بورڈ کا نام <span className="text-rose-500">*</span>
+            Board Name <span className="text-rose-500">*</span>
           </label>
           <input
             type="text"

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard,
@@ -20,11 +20,13 @@ import {
   GraduationCap,
   FileText,
   Sparkles,
+  Trash2,
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { useAdminLock } from '../../contexts/AdminLockContext';
 import { AdminSectionLockModal } from '../auth/AdminSectionLockModal';
 import { ChangeAdminPasswordModal } from '../auth/ChangeAdminPasswordModal';
+import { ClientHandoverCleanupModal } from '../maintenance/ClientHandoverCleanupModal';
 
 export interface SidebarProps {
   onNavigate?: () => void;
@@ -35,7 +37,6 @@ interface NavItem {
   name: string;
   to: string;
   icon: React.ElementType;
-  phase: string;
   enabled: boolean;
 }
 
@@ -55,6 +56,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ onNavigate, className = '' }) 
 
   const location = useLocation();
   const navigate = useNavigate();
+  const [isCleanupModalOpen, setIsCleanupModalOpen] = useState(false);
 
   // 1. Core Store Operations
   const mainNavItems: NavItem[] = [
@@ -62,49 +64,42 @@ export const Sidebar: React.FC<SidebarProps> = ({ onNavigate, className = '' }) 
       name: 'Dashboard',
       to: '/',
       icon: LayoutDashboard,
-      phase: 'Phase 1',
       enabled: true,
     },
     {
       name: 'Billing & POS',
       to: '/pos',
       icon: Receipt,
-      phase: 'Phase 4',
       enabled: true,
     },
     {
       name: 'Sales History & Returns',
       to: '/sales-history',
       icon: Clock,
-      phase: 'Phase 4',
       enabled: true,
     },
     {
       name: 'Inventory & Items',
       to: '/inventory',
       icon: BookOpen,
-      phase: 'Phase 2',
       enabled: true,
     },
     {
       name: 'Customers & Khata',
       to: '/customers',
       icon: Users,
-      phase: 'Phase 3',
       enabled: true,
     },
     {
       name: 'Purchases & Intake',
       to: '/purchases',
       icon: Truck,
-      phase: 'Phase 2',
       enabled: true,
     },
     {
       name: 'Suppliers & Vendors',
       to: '/suppliers',
       icon: Building2,
-      phase: 'Phase 2',
       enabled: true,
     },
   ];
@@ -115,21 +110,18 @@ export const Sidebar: React.FC<SidebarProps> = ({ onNavigate, className = '' }) 
       name: 'Publisher Analytics',
       to: '/publisher-analytics',
       icon: BarChart3,
-      phase: 'Phase 5',
       enabled: true,
     },
     {
       name: 'Financial Reports',
       to: '/reports',
       icon: BarChart3,
-      phase: 'Phase 6',
       enabled: true,
     },
     {
       name: 'Expenses & Closing',
       to: '/expenses',
       icon: Wallet,
-      phase: 'Phase 6',
       enabled: true,
     },
   ];
@@ -140,21 +132,18 @@ export const Sidebar: React.FC<SidebarProps> = ({ onNavigate, className = '' }) 
       name: 'Syllabus',
       to: '/syllabus',
       icon: GraduationCap,
-      phase: 'Phase 2',
       enabled: true,
     },
     {
       name: 'Price List',
       to: '/price-list',
       icon: Tag,
-      phase: 'Phase 2',
       enabled: true,
     },
     {
       name: 'Rough Bill',
       to: '/rough-bill',
       icon: FileText,
-      phase: 'Phase 2',
       enabled: true,
     },
   ];
@@ -219,20 +208,16 @@ export const Sidebar: React.FC<SidebarProps> = ({ onNavigate, className = '' }) 
       );
     }
 
-    // Upcoming phases disabled item
+    // Inactive item fallback
     return (
       <div
         key={item.name}
-        title={`Scheduled for development in ${item.phase}`}
         className="flex items-center justify-between px-3.5 py-2.5 rounded-xl text-sm font-medium text-slate-400 cursor-not-allowed opacity-75 hover:bg-[#0A255B]/40 transition"
       >
         <div className="flex items-center gap-3">
           <Icon className="w-4 h-4 text-slate-400" />
           <span className="text-slate-300">{item.name}</span>
         </div>
-        <span className="text-[10px] font-semibold tracking-wide px-2 py-0.5 rounded-md bg-[#04122C] text-slate-300 border border-[#0E2E70]/80">
-          {item.phase}
-        </span>
       </div>
     );
   };
@@ -262,7 +247,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ onNavigate, className = '' }) 
               <div className="flex items-center gap-1.5 mt-1">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
                 <p className="text-[10px] font-semibold text-slate-300 uppercase tracking-wider">
-                  Phase 2 Active
+                  Live System
                 </p>
               </div>
             </div>
@@ -336,6 +321,15 @@ export const Sidebar: React.FC<SidebarProps> = ({ onNavigate, className = '' }) 
             >
               <KeyRound className="w-3.5 h-3.5" />
             </button>
+
+            <button
+              type="button"
+              onClick={() => setIsCleanupModalOpen(true)}
+              className="p-1.5 rounded-lg bg-slate-800 hover:bg-rose-950/60 text-slate-300 hover:text-rose-300 border border-slate-700 transition-all cursor-pointer"
+              title="Clean All Testing Data for Client Handover"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
           </div>
 
           {/* User Profile Card */}
@@ -384,6 +378,15 @@ export const Sidebar: React.FC<SidebarProps> = ({ onNavigate, className = '' }) 
       <ChangeAdminPasswordModal
         isOpen={isChangePasswordModalOpen}
         onClose={closeChangePasswordModal}
+      />
+
+      {/* Client Handover Cleanup Modal */}
+      <ClientHandoverCleanupModal
+        isOpen={isCleanupModalOpen}
+        onClose={() => setIsCleanupModalOpen(false)}
+        onCompleted={() => {
+          navigate('/');
+        }}
       />
     </>
   );

@@ -1,0 +1,45 @@
+{
+  "executedAt": "2026-11-07T11:16:34.494Z",
+  "totalDeleted": 62,
+  "deletedByCollection": {
+    "auditLogs": 23,
+    "boards": 1,
+    "customerLedger": 3,
+    "customers": 1,
+    "dailyCashClosings": 0,
+    "expenses": 2,
+    "notebookAttributes": 0,
+    "payments": 8,
+    "products": 0,
+    "publishers": 1,
+    "purchases": 1,
+    "roughBills": 0,
+    "saleReturnSummaries": 1,
+    "sales": 5,
+    "salesReturns": 1,
+    "schools": 1,
+    "series": 1,
+    "stockBatches": 2,
+    "stockMovements": 9,
+    "suppliers": 1,
+    "syllabusSets": 1,
+    "whatsappMessages": 0
+  },
+  "preservedRecords": {
+    "categories": [
+      "cat_intermediate",
+      "cat_matric",
+      "cat_middle",
+      "cat_others",
+      "cat_primary",
+      "cat_secondary"
+    ],
+    "users": [
+      "eptsy6YFXXgq7z43BW0UVb7Xfe62"
+    ],
+    "settings": [
+      "inventory_summary"
+    ]
+  },
+  "status": "PRISTINE_CLEAN_FOR_CLIENT_HANDOVER"
+}

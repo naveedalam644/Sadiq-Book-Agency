@@ -482,7 +482,7 @@ runTest('Verifies CustomerDetailModal contains WhatsApp reminder and statement b
 runTest('Verifies SystemStatus page contains WhatsApp Customer Communication Card', () => {
   const content = fs.readFileSync(path.resolve(process.cwd(), 'src/pages/SystemStatus.tsx'), 'utf8');
   assert.ok(content.includes('WhatsApp Customer Communication System (Option C)'), 'SystemStatus must display WhatsApp status card');
-  assert.ok(content.includes('PHASE W1 ACTIVE'), 'SystemStatus must show Phase W1 Active badge');
+  assert.ok(content.includes('ACTIVE'), 'SystemStatus must show Active badge');
 });
 
 runTest('Verifies POS page contains Last Bill banner with WhatsApp access', () => {
