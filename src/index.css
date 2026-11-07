@@ -25,3 +25,45 @@
     @apply bg-slate-300 rounded-full hover:bg-slate-400;
   }
 }
+
+/* ==========================================================================
+   PRINT LAYOUT & STYLING (A4 Clean Print Rules)
+   ========================================================================== */
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 12mm 10mm 15mm 10mm;
+  }
+
+  body {
+    background: white !important;
+    color: black !important;
+    font-size: 10pt;
+  }
+
+  /* Prevent page breaks inside cards, tables and summary sections */
+  tr, .print-avoid-break, .break-inside-avoid {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+
+  /* Ensure table headers repeat across pages */
+  thead {
+    display: table-header-group;
+  }
+
+  tfoot {
+    display: table-footer-group;
+  }
+
+  /* Hide navigation, sidebars, buttons, interactive controls */
+  .no-print, nav, aside, button, input, select {
+    display: none !important;
+  }
+
+  /* Remove shadows for crisp black-and-white printing */
+  * {
+    box-shadow: none !important;
+    text-shadow: none !important;
+  }
+}

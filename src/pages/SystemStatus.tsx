@@ -10,7 +10,8 @@ import {
   FileText,
   Copy,
   ExternalLink,
-} from 'lucide-react';
+  } from 'lucide-react';
+import { WhatsAppIcon } from '../components/common/WhatsAppIcon';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
 import { getFirebaseConfigSummary } from '../config/firebase';
@@ -269,6 +270,71 @@ export const SystemStatus: React.FC = () => {
           data={envItems}
           keyExtractor={(item) => item.key}
         />
+      </Card>
+
+      {/* WhatsApp Customer Communication System Status */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
+              <div className="p-2 bg-emerald-50 text-emerald-600 rounded-xl">
+                <WhatsAppIcon className="w-5 h-5" />
+              </div>
+              <div>
+                <CardTitle>WhatsApp Customer Communication System (Option C)</CardTitle>
+                <CardDescription>
+                  Hybrid dual-method customer messaging: Direct Manual Web Sharing & Cloud API readiness
+                </CardDescription>
+              </div>
+            </div>
+            <Badge variant="success" size="sm">
+              PHASE W1 ACTIVE
+            </Badge>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="p-4 bg-emerald-50/50 border border-emerald-200 rounded-xl space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-xs text-emerald-950 flex items-center gap-1.5">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                  Method 1: Manual Direct Sharing
+                </span>
+                <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 text-[10px] font-bold rounded-full">
+                  Enabled
+                </span>
+              </div>
+              <p className="text-xs text-slate-600">
+                Dispatches pre-formatted Urdu/English invoices, vouchers, and statements via <code>wa.me</code> deep links and Web Share API.
+              </p>
+              <ul className="text-[11px] text-slate-500 space-y-1 list-disc pl-4">
+                <li>Zero-cost, no Meta API fees or billing changes</li>
+                <li>Seamless client-side vector PDF generation & download</li>
+                <li>POS, Sales History, Returns, and Khata integration</li>
+              </ul>
+            </div>
+
+            <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-xs text-slate-800 flex items-center gap-1.5">
+                  <ShieldCheck className="w-4 h-4 text-blue-600" />
+                  Method 2: Official Meta Cloud API
+                </span>
+                <span className="px-2 py-0.5 bg-slate-200 text-slate-700 text-[10px] font-bold rounded-full">
+                  Phase W2 Sandbox Ready
+                </span>
+              </div>
+              <p className="text-xs text-slate-600">
+                Architecture, Firestore schemas, security rules, and message log indexes prepared for server-side proxy integration.
+              </p>
+              <ul className="text-[11px] text-slate-500 space-y-1 list-disc pl-4">
+                <li>Awaiting store owner Meta Developer App & System Token</li>
+                <li>Zero exposure of credentials in frontend bundle</li>
+                <li>Utility template structures ready for approval</li>
+              </ul>
+            </div>
+          </div>
+        </CardContent>
       </Card>
 
       {/* Manual Setup Tasks for the Business Owner */}

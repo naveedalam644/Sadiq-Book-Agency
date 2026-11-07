@@ -1,16 +1,18 @@
 import React from 'react';
-import { Barcode, MapPin, AlertTriangle, TrendingUp, Calendar, CheckCircle } from 'lucide-react';
+import { Barcode, AlertTriangle, TrendingUp, Calendar, CheckCircle, History, Layers } from 'lucide-react';
 import { Modal } from '../common/Modal';
 import { Badge } from '../common/Badge';
 import { Button } from '../common/Button';
-import type { ProductDocument } from '../../types/database';
+import type { ProductDocument, StockBatchDocument } from '../../types/database';
 import { formatCurrency, formatNumber } from '../../utils/formatters';
+import { getActiveBatchesForProduct, calculateProductValuationFromBatches } from '../../services/stockBatchService';
 
 export interface ProductDetailModalProps {
   isOpen: boolean;
   onClose: () => void;
   product: ProductDocument | null;
   onEdit?: (product: ProductDocument) => void;
+  onViewHistory?: (product: ProductDocument) => void;
 }
 
 export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
@@ -18,11 +20,32 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
   onClose,
   product,
   onEdit,
+  onViewHistory,
 }) => {
+  const [activeBatches, setActiveBatches] = React.useState<StockBatchDocument[]>([]);
+
+  React.useEffect(() => {
+    if (isOpen && product?.id) {
+      getActiveBatchesForProduct(product.id)
+        .then((batches) => setActiveBatches(batches))
+        .catch((err) => console.error('Error fetching batches:', err));
+    } else {
+      setActiveBatches([]);
+    }
+  }, [isOpen, product?.id]);
+
+  const batchValuation = React.useMemo(() => {
+    if (!product) return 0;
+    return calculateProductValuationFromBatches(product, activeBatches);
+  }, [product, activeBatches]);
+
   if (!product) return null;
 
   const isLowStock = product.currentStock <= product.lowStockThreshold;
-  const valuation = product.currentStock * product.costPrice;
+  const valuation = batchValuation > 0 ? batchValuation : product.currentStock * product.costPrice;
+  const publisherDiscount = typeof product.publisherDiscountPercent === 'number'
+    ? product.publisherDiscountPercent
+    : (product.retailPrice > 0 ? Math.max(0, Math.round(((product.retailPrice - product.costPrice) / product.retailPrice) * 1000) / 10) : 0);
   const retailMargin = product.retailPrice - product.costPrice;
   const retailMarginPercent = product.costPrice > 0 ? ((retailMargin / product.costPrice) * 100).toFixed(1) : '0';
 
@@ -43,6 +66,20 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
             <Button variant="outline" size="sm" onClick={onClose}>
               Close
             </Button>
+            {onViewHistory && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  onClose();
+                  onViewHistory(product);
+                }}
+                className="text-[#071F49] border-[#071F49]/20 hover:bg-[#071F49]/5"
+              >
+                <History className="w-3.5 h-3.5 mr-1" />
+                View History
+              </Button>
+            )}
             {onEdit && (
               <Button
                 variant="gold"
@@ -135,48 +172,96 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
         <div className="p-4 bg-slate-50 rounded-xl border border-slate-200">
           <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-3 flex items-center gap-1.5">
             <TrendingUp className="w-4 h-4 text-[#071F49]" />
-            Selling Rates & Gross Margin
+            Pricing & Publisher Cost Model
           </h4>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
             <div>
-              <span className="text-slate-500 block">Retail (Parchon) Price:</span>
+              <span className="text-slate-500 block">Original Price / MRP:</span>
               <span className="text-base font-bold text-slate-900 font-mono mt-0.5 block">
                 {formatCurrency(product.retailPrice)}
+              </span>
+              <span className="text-[11px] text-slate-500">Catalog / Counter rate</span>
+            </div>
+
+            <div>
+              <span className="text-slate-500 block">Publisher Discount:</span>
+              <span className="text-base font-bold text-emerald-700 font-mono mt-0.5 block">
+                {publisherDiscount}% Off
+              </span>
+              <span className="text-[11px] text-slate-500">Product-level term</span>
+            </div>
+
+            <div>
+              <span className="text-slate-500 block">Actual Purchase Cost:</span>
+              <span className="text-base font-bold text-[#071F49] font-mono mt-0.5 block">
+                {formatCurrency(product.costPrice)}
               </span>
               <span className="text-[11px] text-emerald-600 font-medium">
                 +{retailMarginPercent}% Markup ({formatCurrency(retailMargin)})
               </span>
             </div>
-
-            <div>
-              <span className="text-slate-500 block">Wholesale Rate:</span>
-              <span className="text-base font-bold text-slate-900 font-mono mt-0.5 block">
-                {formatCurrency(product.wholesalePrice)}
-              </span>
-              <span className="text-[11px] text-slate-500">Bulk buyers</span>
-            </div>
-
-            <div>
-              <span className="text-slate-500 block">Shelf / Rack Location:</span>
-              <span className="text-sm font-semibold text-slate-800 mt-1 block flex items-center gap-1">
-                <MapPin className="w-3.5 h-3.5 text-slate-400" />
-                {product.shelfLocation || 'Unassigned'}
-              </span>
-            </div>
           </div>
         </div>
 
+        {/* Notebook & Register Dynamic Specifications (When applicable) */}
+        {(product.classification === 'notebook' ||
+          product.classification === 'register' ||
+          product.notebookSize ||
+          product.notebookSheets ||
+          product.notebookGrammage) && (
+          <div className="p-4 bg-amber-50/60 border border-amber-200/80 rounded-xl space-y-2">
+            <h4 className="text-xs font-bold text-amber-950 uppercase tracking-wider flex items-center gap-1.5">
+              <Layers className="w-4 h-4 text-amber-700" />
+              Notebook & Register Specifications
+            </h4>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+              <div className="p-2.5 bg-white border border-amber-200/60 rounded-lg">
+                <span className="text-slate-400 block text-[10px] uppercase font-semibold">Size</span>
+                <span className="font-bold text-slate-800 text-sm">
+                  {product.notebookSize || 'Not specified'}
+                </span>
+              </div>
+              <div className="p-2.5 bg-white border border-amber-200/60 rounded-lg">
+                <span className="text-slate-400 block text-[10px] uppercase font-semibold">Sheets</span>
+                <span className="font-bold text-slate-800 text-sm">
+                  {product.notebookSheets ? `${product.notebookSheets} Sheets` : 'Not specified'}
+                </span>
+              </div>
+              <div className="p-2.5 bg-white border border-amber-200/60 rounded-lg">
+                <span className="text-slate-400 block text-[10px] uppercase font-semibold">Grammage (Paper GSM)</span>
+                <span className="font-bold text-slate-800 text-sm">
+                  {product.notebookGrammage || 'Not specified'}
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Specification Details List */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+        <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 text-xs">
           <div className="p-3 border border-slate-200 rounded-xl">
-            <span className="text-slate-400 block mb-0.5">Author / Publishing House / Brand</span>
+            <span className="text-slate-400 block mb-0.5">Publisher</span>
+            <span className="font-semibold text-slate-800">
+              {product.publisherName || 'Not specified'}
+            </span>
+          </div>
+
+          <div className="p-3 border border-slate-200 rounded-xl">
+            <span className="text-slate-400 block mb-0.5">Series</span>
+            <span className="font-semibold text-slate-800">
+              {product.seriesName || 'Unassigned / Standalone'}
+            </span>
+          </div>
+
+          <div className="p-3 border border-slate-200 rounded-xl">
+            <span className="text-slate-400 block mb-0.5">Author / Brand</span>
             <span className="font-semibold text-slate-800">
               {product.authorOrPublisher || 'Not specified'}
             </span>
           </div>
 
           <div className="p-3 border border-slate-200 rounded-xl">
-            <span className="text-slate-400 block mb-0.5">Edition / Class / Specs</span>
+            <span className="text-slate-400 block mb-0.5">Edition / Class</span>
             <span className="font-semibold text-slate-800">
               {product.edition || 'Standard'}
             </span>
@@ -197,6 +282,63 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
             </span>
           </div>
         </div>
+
+        {/* Active FIFO Stock Batches */}
+        {activeBatches.length > 0 && (
+          <div className="p-4 bg-amber-50/50 border border-amber-200/60 rounded-xl space-y-2.5">
+            <div className="flex items-center justify-between">
+              <h4 className="text-xs font-bold text-amber-950 uppercase tracking-wider flex items-center gap-1.5">
+                <Layers className="w-4 h-4 text-amber-700" />
+                Active Stock Batches (FIFO Costing)
+              </h4>
+              <span className="text-[11px] text-amber-800 font-medium">
+                {activeBatches.length} batch{activeBatches.length > 1 ? 'es' : ''} in inventory
+              </span>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs text-slate-700">
+                <thead className="bg-amber-100/60 text-amber-900 font-semibold text-[11px] uppercase">
+                  <tr>
+                    <th className="px-2.5 py-1.5">Intake Date</th>
+                    <th className="px-2.5 py-1.5">Invoice / Batch</th>
+                    <th className="px-2.5 py-1.5 text-center">Remaining / Intake</th>
+                    <th className="px-2.5 py-1.5 text-right">MRP</th>
+                    <th className="px-2.5 py-1.5 text-right">Pub Disc %</th>
+                    <th className="px-2.5 py-1.5 text-right">Unit Cost</th>
+                    <th className="px-2.5 py-1.5 text-right">Valuation</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-amber-200/40">
+                  {activeBatches.map((batch) => (
+                    <tr key={batch.id} className="hover:bg-amber-100/30">
+                      <td className="px-2.5 py-1.5 font-mono text-slate-600">
+                        {batch.purchaseDate || batch.createdAt.split('T')[0]}
+                      </td>
+                      <td className="px-2.5 py-1.5 font-medium text-slate-800">
+                        {batch.batchType === 'opening' ? 'Opening Legacy Stock' : batch.purchaseInvoiceNo}
+                      </td>
+                      <td className="px-2.5 py-1.5 text-center font-mono font-semibold text-slate-800">
+                        {formatNumber(batch.remainingQuantity)} / {formatNumber(batch.quantityPurchased)}
+                      </td>
+                      <td className="px-2.5 py-1.5 text-right font-mono text-slate-600">
+                        {batch.mrp > 0 ? formatCurrency(batch.mrp) : '—'}
+                      </td>
+                      <td className="px-2.5 py-1.5 text-right font-mono text-slate-600">
+                        {batch.publisherDiscountPercent > 0 ? `${batch.publisherDiscountPercent}%` : '—'}
+                      </td>
+                      <td className="px-2.5 py-1.5 text-right font-mono text-slate-700 font-semibold">
+                        {formatCurrency(batch.unitCost)}
+                      </td>
+                      <td className="px-2.5 py-1.5 text-right font-mono font-bold text-slate-900">
+                        {formatCurrency(batch.remainingQuantity * batch.unitCost)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
       </div>
     </Modal>
   );

@@ -1,0 +1,39 @@
+{
+  "executedAt": "2026-11-06T06:58:26.890Z",
+  "totalDeleted": 198,
+  "deletedByCollection": {
+    "auditLogs": 55,
+    "customerLedger": 12,
+    "payments": 18,
+    "saleReturnSummaries": 1,
+    "salesReturns": 1,
+    "sales": 15,
+    "stockMovements": 35,
+    "stockBatches": 3,
+    "products": 7,
+    "series": 1,
+    "publishers": 1,
+    "customers": 5,
+    "suppliers": 2,
+    "expenses": 2,
+    "categories": 40
+  },
+  "totalRemainingDocs": 8,
+  "remainingDocumentsByCollection": {
+    "categories": [
+      "cat_intermediate",
+      "cat_matric",
+      "cat_middle",
+      "cat_others",
+      "cat_primary",
+      "cat_secondary"
+    ],
+    "settings": [
+      "inventory_summary"
+    ],
+    "users": [
+      "eptsy6YFXXgq7z43BW0UVb7Xfe62"
+    ]
+  },
+  "allVerificationsPassed": true
+}

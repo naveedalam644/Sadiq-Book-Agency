@@ -3,7 +3,6 @@ import { Link } from 'react-router-dom';
 import {
   BookOpen,
   Receipt,
-  Server,
   ArrowRight,
   Sparkles,
   Layers,
@@ -14,7 +13,10 @@ import {
   Plus,
   CheckCircle2,
   Eye,
+  Calendar,
+  Clock,
 } from 'lucide-react';
+import { WhatsAppIcon } from '../components/common/WhatsAppIcon';
 import { useAuth } from '../hooks/useAuth';
 import { StatCard } from '../components/common/StatCard';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '../components/common/Card';
@@ -24,8 +26,12 @@ import { EmptyState } from '../components/feedback/EmptyState';
 import { PurchaseDetailModal } from '../components/purchases/PurchaseDetailModal';
 import { ProductDetailModal } from '../components/inventory/ProductDetailModal';
 import { fetchDashboardData, type DashboardData } from '../services/dashboardService';
-import type { PurchaseDocument, ProductDocument } from '../types/database';
+import { getOverdueReceivablesSummary, type OverdueReceivablesSummary } from '../services/dueDateService';
+import type { PurchaseDocument, ProductDocument, CustomerDocument } from '../types/database';
 import { getGreetingByTime, formatCurrency, formatNumber } from '../utils/formatters';
+import { WhatsAppMessageModal } from '../components/common/WhatsAppMessageModal';
+import { buildOutstandingBalanceWhatsAppMessage } from '../utils/whatsappTemplates';
+import { getCustomerById } from '../services/customerService';
 
 export const Dashboard: React.FC = () => {
   const { currentUser } = useAuth();
@@ -48,6 +54,24 @@ export const Dashboard: React.FC = () => {
 
   const [viewingPurchase, setViewingPurchase] = useState<PurchaseDocument | null>(null);
   const [viewingProduct, setViewingProduct] = useState<ProductDocument | null>(null);
+  const [overdueSummary, setOverdueSummary] = useState<OverdueReceivablesSummary | null>(null);
+  const [loadingOverdue, setLoadingOverdue] = useState(true);
+  const [selectedOverdueInv, setSelectedOverdueInv] = useState<OverdueReceivablesSummary['overdueInvoices'][0] | null>(null);
+  const [overdueCustomer, setOverdueCustomer] = useState<CustomerDocument | null>(null);
+
+  const handleWhatsAppReminder = async (inv: OverdueReceivablesSummary['overdueInvoices'][0]) => {
+    setSelectedOverdueInv(inv);
+    if (inv.customerId) {
+      try {
+        const cust = await getCustomerById(inv.customerId);
+        setOverdueCustomer(cust);
+      } catch {
+        setOverdueCustomer(null);
+      }
+    } else {
+      setOverdueCustomer(null);
+    }
+  };
 
   useEffect(() => {
     let isMounted = true;
@@ -66,6 +90,20 @@ export const Dashboard: React.FC = () => {
         console.error('Failed to load dashboard data:', err);
         if (isMounted) {
           setDashboardData((prev) => ({ ...prev, isLoading: false }));
+        }
+      });
+
+    getOverdueReceivablesSummary()
+      .then((data) => {
+        if (isMounted) {
+          setOverdueSummary(data);
+          setLoadingOverdue(false);
+        }
+      })
+      .catch((err) => {
+        console.error('Failed to load overdue summary:', err);
+        if (isMounted) {
+          setLoadingOverdue(false);
         }
       });
 
@@ -197,6 +235,116 @@ export const Dashboard: React.FC = () => {
           badgeVariant="info"
         />
       </div>
+
+      {/* 2b. CREDIT RECEIVABLES & DUE DATES HEALTH (MODULE 6.6 & DUE DATES SYSTEM) */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <StatCard
+          title="Total Overdue Receivables"
+          value={loadingOverdue ? '...' : formatCurrency(overdueSummary?.totalOverdueAmount || 0)}
+          subtitle={`${overdueSummary?.overdueInvoices.length || 0} overdue invoices`}
+          icon={<AlertTriangle className="w-5 h-5 text-rose-600" />}
+          iconBgColor="bg-rose-50 text-rose-700"
+          badgeText={(overdueSummary?.totalOverdueAmount || 0) > 0 ? 'Overdue Action' : 'All Settled'}
+          badgeVariant={(overdueSummary?.totalOverdueAmount || 0) > 0 ? 'warning' : 'success'}
+        />
+
+        <StatCard
+          title="Bills Due Today"
+          value={loadingOverdue ? '...' : formatCurrency(overdueSummary?.totalDueTodayAmount || 0)}
+          subtitle={`${overdueSummary?.dueTodayCount || 0} invoices due today`}
+          icon={<Clock className="w-5 h-5 text-amber-600" />}
+          iconBgColor="bg-amber-50 text-amber-700"
+          badgeText="Due Today"
+          badgeVariant="warning"
+        />
+
+        <StatCard
+          title="Due within 7 Days"
+          value={loadingOverdue ? '...' : formatCurrency(overdueSummary?.totalDueSoonAmount || 0)}
+          subtitle={`${overdueSummary?.dueSoonCount || 0} upcoming settlements`}
+          icon={<Calendar className="w-5 h-5 text-indigo-700" />}
+          iconBgColor="bg-indigo-50 text-indigo-700"
+          badgeText="Next 7 Days"
+          badgeVariant="info"
+        />
+
+        <StatCard
+          title="Total Outstanding Khata"
+          value={loadingOverdue ? '...' : formatCurrency(overdueSummary?.totalOutstandingCredit || 0)}
+          subtitle="Customer ledger receivables balance"
+          icon={<Receipt className="w-5 h-5 text-[#071F49]" />}
+          iconBgColor="bg-[#071F49]/10 text-[#071F49]"
+          badgeText="Total Khata"
+          badgeVariant="brand"
+        />
+      </div>
+
+      {/* Overdue Invoices Quick Watch (if any overdue debt exists) */}
+      {overdueSummary && overdueSummary.overdueInvoices.length > 0 && (
+        <Card className="border border-rose-200 bg-rose-50/20 shadow-xs rounded-2xl overflow-hidden">
+          <CardHeader className="bg-rose-50/60 border-b border-rose-100 py-3.5">
+            <div className="flex items-center justify-between w-full">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 text-rose-600" />
+                <CardTitle className="text-sm font-bold text-rose-950">
+                  Critical Overdue Invoices Requiring Follow-Up ({overdueSummary.overdueInvoices.length})
+                </CardTitle>
+              </div>
+              <Link
+                to="/sales"
+                className="text-xs font-bold text-rose-800 hover:text-rose-950 inline-flex items-center gap-1"
+              >
+                <span>Sales Invoices</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </Link>
+            </div>
+          </CardHeader>
+          <CardContent className="p-0 overflow-x-auto">
+            <table className="w-full text-xs text-left">
+              <thead className="bg-slate-50 text-slate-600 font-bold border-b border-slate-200">
+                <tr>
+                  <th className="py-2.5 px-4">Invoice #</th>
+                  <th className="py-2.5 px-4">Customer</th>
+                  <th className="py-2.5 px-4">Bill Date</th>
+                  <th className="py-2.5 px-4 text-center">Due Date</th>
+                  <th className="py-2.5 px-4 text-center">Overdue</th>
+                  <th className="py-2.5 px-4 text-right">Remaining Debt</th>
+                  <th className="py-2.5 px-4 text-center">Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-rose-100/60">
+                {overdueSummary.overdueInvoices.slice(0, 5).map((inv) => (
+                  <tr key={inv.saleId} className="hover:bg-rose-50/40 transition">
+                    <td className="py-2.5 px-4 font-mono font-bold text-slate-900">{inv.invoiceNo}</td>
+                    <td className="py-2.5 px-4 font-semibold text-slate-800">{inv.customerName}</td>
+                    <td className="py-2.5 px-4 text-slate-500">{inv.saleDate.split('T')[0]}</td>
+                    <td className="py-2.5 px-4 text-center font-mono text-slate-700">{inv.dueDate}</td>
+                    <td className="py-2.5 px-4 text-center">
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800 border border-rose-200">
+                        {inv.daysOverdue} days overdue
+                      </span>
+                    </td>
+                    <td className="py-2.5 px-4 text-right font-mono font-black text-rose-700">
+                      {formatCurrency(inv.remainingBalance)}
+                    </td>
+                    <td className="py-2.5 px-4 text-center whitespace-nowrap">
+                      <button
+                        type="button"
+                        onClick={() => handleWhatsAppReminder(inv)}
+                        className="px-2 py-1 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 hover:text-emerald-800 rounded-lg transition border border-emerald-200 inline-flex items-center gap-1 shadow-2xs font-semibold text-[11px]"
+                        title="Send WhatsApp Payment Reminder"
+                      >
+                        <WhatsAppIcon className="w-3.5 h-3.5" />
+                        <span>Remind</span>
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </CardContent>
+        </Card>
+      )}
 
       {/* 3. RECENT PURCHASES & LOW-STOCK ALERTS SECTIONS */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -384,18 +532,18 @@ export const Dashboard: React.FC = () => {
         </Link>
 
         <Link
-          to="/system-status"
+          to="/pos"
           className="flex items-center justify-between p-4 rounded-2xl bg-white border border-slate-200/90 hover:border-[#F5B51B] hover:shadow-md transition group"
         >
           <div className="flex items-center gap-3.5">
             <div className="p-3 rounded-xl bg-[#071F49] text-white group-hover:bg-[#F5B51B] group-hover:text-[#071F49] transition-colors">
-              <Server className="w-5 h-5" />
+              <Receipt className="w-5 h-5" />
             </div>
             <div>
               <h4 className="text-sm font-bold text-[#071F49]">
-                Diagnostics & Rules
+                Billing & POS Register
               </h4>
-              <p className="text-xs text-slate-500">Zero-trust security & indexes</p>
+              <p className="text-xs text-slate-500">Fast counter sales, cart & receipts</p>
             </div>
           </div>
           <ArrowRight className="w-4 h-4 text-slate-400 group-hover:text-[#F5B51B] group-hover:translate-x-1 transition" />
@@ -483,6 +631,27 @@ export const Dashboard: React.FC = () => {
         onClose={() => setViewingProduct(null)}
         product={viewingProduct}
       />
+
+      {/* WhatsApp Overdue Payment Reminder Modal */}
+      {selectedOverdueInv && (
+        <WhatsAppMessageModal
+          isOpen={Boolean(selectedOverdueInv)}
+          onClose={() => {
+            setSelectedOverdueInv(null);
+            setOverdueCustomer(null);
+          }}
+          initialCustomerName={selectedOverdueInv.customerName || overdueCustomer?.name || 'Customer'}
+          initialPhone={overdueCustomer?.phone || ''}
+          customerId={selectedOverdueInv.customerId}
+          messageType="payment_reminder"
+          relatedInvoiceNo={selectedOverdueInv.invoiceNo}
+          defaultMessageText={buildOutstandingBalanceWhatsAppMessage({
+            customerName: selectedOverdueInv.customerName || overdueCustomer?.name || 'Customer',
+            currentBalance: selectedOverdueInv.remainingBalance,
+            dueDate: selectedOverdueInv.dueDate,
+          })}
+        />
+      )}
     </div>
   );
 };

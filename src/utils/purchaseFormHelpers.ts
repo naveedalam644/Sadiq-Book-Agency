@@ -12,6 +12,8 @@ export interface PurchaseItemRow {
   authorOrPublisher?: string;
   currentStock?: number;
   unit?: string;
+  mrp: number | '';
+  publisherDiscountPercent: number | '';
   quantity: number | '';
   unitCost: number | '';
   totalCost: number;
@@ -144,7 +146,14 @@ export const addOrIncrementPurchaseItem = (
     return { updatedItems: updated, isIncrement: true, updatedIndex: existingIndex };
   }
 
-  const defaultCost = Number(product.costPrice) || 0;
+  const mrp = Number(product.retailPrice || product.originalPrice) || 0;
+  const defaultPubDisc = typeof product.publisherDiscountPercent === 'number'
+    ? product.publisherDiscountPercent
+    : (mrp > 0 ? Math.max(0, Math.round(((mrp - product.costPrice) / mrp) * 1000) / 10) : 0);
+  const defaultCost = mrp > 0
+    ? Math.round(mrp * (1 - defaultPubDisc / 100) * 100) / 100
+    : (Number(product.costPrice) || 0);
+
   const newItem: PurchaseItemRow = {
     productId: product.id,
     productName: product.title,
@@ -154,6 +163,8 @@ export const addOrIncrementPurchaseItem = (
     authorOrPublisher: product.authorOrPublisher || '',
     currentStock: product.currentStock,
     unit: product.unit || 'piece',
+    mrp: mrp || defaultCost,
+    publisherDiscountPercent: defaultPubDisc,
     quantity: 1,
     unitCost: defaultCost,
     totalCost: defaultCost,
@@ -163,12 +174,12 @@ export const addOrIncrementPurchaseItem = (
 };
 
 /**
- * Handles updating Quantity, Unit Cost (Rate), or Total Amount in an invoice item row.
+ * Handles updating Quantity, MRP, Publisher Discount %, Unit Cost (Rate), or Total Amount in an invoice item row.
  * Keeps line totals and unit rates in exact sync.
  */
 export const updatePurchaseItemField = (
   item: PurchaseItemRow,
-  field: 'quantity' | 'unitCost' | 'totalCost',
+  field: 'quantity' | 'mrp' | 'publisherDiscountPercent' | 'unitCost' | 'totalCost',
   value: number | ''
 ): PurchaseItemRow => {
   const updated = { ...item };
@@ -178,17 +189,42 @@ export const updatePurchaseItemField = (
     const q = typeof value === 'number' ? value : 0;
     const rate = typeof updated.unitCost === 'number' ? updated.unitCost : 0;
     updated.totalCost = Math.round(q * rate * 100) / 100;
+  } else if (field === 'mrp') {
+    updated.mrp = value;
+    const m = typeof value === 'number' ? value : 0;
+    const disc = typeof updated.publisherDiscountPercent === 'number' ? updated.publisherDiscountPercent : 0;
+    const cost = Math.round(m * (1 - disc / 100) * 100) / 100;
+    updated.unitCost = cost;
+    const q = typeof updated.quantity === 'number' ? updated.quantity : 0;
+    updated.totalCost = Math.round(q * cost * 100) / 100;
+  } else if (field === 'publisherDiscountPercent') {
+    updated.publisherDiscountPercent = value;
+    const m = typeof updated.mrp === 'number' ? updated.mrp : 0;
+    const disc = typeof value === 'number' ? Math.max(0, Math.min(100, value)) : 0;
+    const cost = Math.round(m * (1 - disc / 100) * 100) / 100;
+    updated.unitCost = cost;
+    const q = typeof updated.quantity === 'number' ? updated.quantity : 0;
+    updated.totalCost = Math.round(q * cost * 100) / 100;
   } else if (field === 'unitCost') {
     updated.unitCost = value;
     const q = typeof updated.quantity === 'number' ? updated.quantity : 0;
     const rate = typeof value === 'number' ? value : 0;
     updated.totalCost = Math.round(q * rate * 100) / 100;
+    const m = typeof updated.mrp === 'number' ? updated.mrp : 0;
+    if (m > 0 && typeof value === 'number') {
+      updated.publisherDiscountPercent = Math.max(0, Math.round(((m - value) / m) * 1000) / 10);
+    }
   } else if (field === 'totalCost') {
     const total = typeof value === 'number' ? Math.max(0, value) : 0;
     updated.totalCost = total;
     const q = typeof updated.quantity === 'number' ? updated.quantity : 0;
     if (q > 0) {
-      updated.unitCost = Math.round((total / q) * 100) / 100;
+      const calculatedUnit = Math.round((total / q) * 100) / 100;
+      updated.unitCost = calculatedUnit;
+      const m = typeof updated.mrp === 'number' ? updated.mrp : 0;
+      if (m > 0) {
+        updated.publisherDiscountPercent = Math.max(0, Math.round(((m - calculatedUnit) / m) * 1000) / 10);
+      }
     }
   }
 

@@ -81,6 +81,8 @@ export const PurchaseDetailModal: React.FC<PurchaseDetailModalProps> = ({
                 <th className="px-3.5 py-2.5">#</th>
                 <th className="px-3.5 py-2.5">Product / Book Title</th>
                 <th className="px-3.5 py-2.5 text-center">Quantity</th>
+                <th className="px-3.5 py-2.5 text-right">MRP</th>
+                <th className="px-3.5 py-2.5 text-right">Pub Disc %</th>
                 <th className="px-3.5 py-2.5 text-right">Unit Cost</th>
                 <th className="px-3.5 py-2.5 text-right">Line Total</th>
               </tr>
@@ -92,6 +94,12 @@ export const PurchaseDetailModal: React.FC<PurchaseDetailModalProps> = ({
                   <td className="px-3.5 py-2 font-medium text-slate-800">{item.productName}</td>
                   <td className="px-3.5 py-2 text-center font-mono font-semibold text-slate-700">
                     +{formatNumber(item.quantity)}
+                  </td>
+                  <td className="px-3.5 py-2 text-right font-mono text-slate-600">
+                    {item.mrp !== undefined && item.mrp > 0 ? formatCurrency(item.mrp) : '—'}
+                  </td>
+                  <td className="px-3.5 py-2 text-right font-mono text-slate-600">
+                    {item.publisherDiscountPercent !== undefined && item.publisherDiscountPercent > 0 ? `${item.publisherDiscountPercent}%` : '—'}
                   </td>
                   <td className="px-3.5 py-2 text-right font-mono text-slate-600">
                     {formatCurrency(item.unitCost)}

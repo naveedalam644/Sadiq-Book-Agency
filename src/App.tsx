@@ -2,6 +2,7 @@ import React from 'react';
 import { BrowserRouter } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
 import { ToastProvider } from './contexts/ToastContext';
+import { AdminLockProvider } from './contexts/AdminLockContext';
 import { AppRoutes } from './routes/AppRoutes';
 
 export const App: React.FC = () => {
@@ -9,7 +10,9 @@ export const App: React.FC = () => {
     <BrowserRouter>
       <ToastProvider>
         <AuthProvider>
-          <AppRoutes />
+          <AdminLockProvider>
+            <AppRoutes />
+          </AdminLockProvider>
         </AuthProvider>
       </ToastProvider>
     </BrowserRouter>

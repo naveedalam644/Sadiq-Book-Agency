@@ -247,7 +247,7 @@ export const PurchaseFormModal: React.FC<PurchaseFormModalProps> = ({
 
   const handleRowChange = (
     index: number,
-    field: 'quantity' | 'unitCost' | 'totalCost',
+    field: 'quantity' | 'mrp' | 'publisherDiscountPercent' | 'unitCost' | 'totalCost',
     val: number | ''
   ) => {
     setItems((prev) => {
@@ -315,6 +315,8 @@ export const PurchaseFormModal: React.FC<PurchaseFormModalProps> = ({
         productId: i.productId,
         productName: i.productName,
         quantity: Number(i.quantity),
+        mrp: i.mrp !== '' ? Number(i.mrp) : undefined,
+        publisherDiscountPercent: i.publisherDiscountPercent !== '' ? Number(i.publisherDiscountPercent) : undefined,
         unitCost: Number(i.unitCost),
         totalCost: Number(i.totalCost),
       })),
@@ -682,17 +684,19 @@ export const PurchaseFormModal: React.FC<PurchaseFormModalProps> = ({
               <thead className="bg-slate-100/70 uppercase font-semibold text-slate-600 border-b border-slate-200">
                 <tr>
                   <th className="px-3 py-2.5 w-10 text-center">#</th>
-                  <th className="px-3 py-2.5 min-w-[220px]">Product / Book Title</th>
-                  <th className="px-3 py-2.5 w-28 text-center">Quantity</th>
-                  <th className="px-3 py-2.5 w-32 text-right">Purchase Rate (PKR)</th>
-                  <th className="px-3 py-2.5 w-36 text-right">Total Amount (PKR)</th>
+                  <th className="px-3 py-2.5 min-w-[200px]">Product / Book Title</th>
+                  <th className="px-3 py-2.5 w-24 text-center">Quantity</th>
+                  <th className="px-3 py-2.5 w-28 text-right">MRP (PKR)</th>
+                  <th className="px-3 py-2.5 w-24 text-center">Pub Disc %</th>
+                  <th className="px-3 py-2.5 w-28 text-right">Unit Cost (PKR)</th>
+                  <th className="px-3 py-2.5 w-32 text-right">Total (PKR)</th>
                   <th className="px-3 py-2.5 w-12 text-center">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {items.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="text-center py-10 px-4">
+                    <td colSpan={8} className="text-center py-10 px-4">
                       <div className="max-w-sm mx-auto text-center space-y-1.5">
                         <Package className="w-6 h-6 text-slate-300 mx-auto" />
                         <p className="text-xs font-semibold text-slate-600">
@@ -747,7 +751,7 @@ export const PurchaseFormModal: React.FC<PurchaseFormModalProps> = ({
                           type="number"
                           min="1"
                           step="1"
-                          className="w-full text-xs font-mono text-center border border-slate-300 rounded-lg p-2 text-slate-900 focus:outline-none focus:border-[#F5B51B] focus:ring-1 focus:ring-[#F5B51B]"
+                          className="w-full text-xs font-mono text-center border border-slate-300 rounded-lg p-1.5 text-slate-900 focus:outline-none focus:border-[#F5B51B] focus:ring-1 focus:ring-[#F5B51B]"
                           value={row.quantity}
                           onChange={(e) =>
                             handleRowChange(
@@ -765,7 +769,44 @@ export const PurchaseFormModal: React.FC<PurchaseFormModalProps> = ({
                           type="number"
                           min="0"
                           step="any"
-                          className="w-full text-xs font-mono text-right border border-slate-300 rounded-lg p-2 text-slate-900 focus:outline-none focus:border-[#F5B51B] focus:ring-1 focus:ring-[#F5B51B]"
+                          className="w-full text-xs font-mono text-right border border-slate-300 rounded-lg p-1.5 text-slate-900 focus:outline-none focus:border-[#F5B51B] focus:ring-1 focus:ring-[#F5B51B]"
+                          value={row.mrp}
+                          onChange={(e) =>
+                            handleRowChange(
+                              idx,
+                              'mrp',
+                              e.target.value === '' ? '' : parseFloat(e.target.value)
+                            )
+                          }
+                          placeholder="MRP"
+                          aria-label={`MRP for ${row.productName}`}
+                        />
+                      </td>
+                      <td className="px-3 py-2.5">
+                        <input
+                          type="number"
+                          min="0"
+                          max="100"
+                          step="any"
+                          className="w-full text-xs font-mono text-center border border-amber-300 rounded-lg p-1.5 text-amber-900 bg-amber-50/50 font-bold focus:outline-none focus:border-[#F5B51B] focus:ring-1 focus:ring-[#F5B51B]"
+                          value={row.publisherDiscountPercent}
+                          onChange={(e) =>
+                            handleRowChange(
+                              idx,
+                              'publisherDiscountPercent',
+                              e.target.value === '' ? '' : parseFloat(e.target.value)
+                            )
+                          }
+                          placeholder="Disc %"
+                          aria-label={`Publisher discount for ${row.productName}`}
+                        />
+                      </td>
+                      <td className="px-3 py-2.5">
+                        <input
+                          type="number"
+                          min="0"
+                          step="any"
+                          className="w-full text-xs font-mono text-right border border-slate-300 rounded-lg p-1.5 text-slate-900 focus:outline-none focus:border-[#F5B51B] focus:ring-1 focus:ring-[#F5B51B]"
                           value={row.unitCost}
                           onChange={(e) =>
                             handleRowChange(
@@ -783,7 +824,7 @@ export const PurchaseFormModal: React.FC<PurchaseFormModalProps> = ({
                           type="number"
                           min="0"
                           step="any"
-                          className="w-full text-xs font-mono font-bold text-right border border-slate-300 rounded-lg p-2 text-slate-900 focus:outline-none focus:border-[#F5B51B] focus:ring-1 focus:ring-[#F5B51B]"
+                          className="w-full text-xs font-mono font-bold text-right border border-slate-300 rounded-lg p-1.5 text-slate-900 focus:outline-none focus:border-[#F5B51B] focus:ring-1 focus:ring-[#F5B51B]"
                           value={row.totalCost}
                           onChange={(e) =>
                             handleRowChange(

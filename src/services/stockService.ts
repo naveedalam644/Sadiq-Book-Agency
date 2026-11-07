@@ -16,9 +16,17 @@ import type {
   StockMovementDocument,
   StockMovementReason,
   ProductDocument,
+  StockBatchDocument,
 } from '../types/database';
 import { logAuditEvent } from './auditService';
 import { INVENTORY_SUMMARY_DOC_ID } from './summaryService';
+import {
+  getActiveBatchesForProduct,
+  depleteFifoBatchesInTransaction,
+  addStockBatchInTransaction,
+  getOpeningStockBatchId,
+  STOCK_BATCHES_COLLECTION,
+} from './stockBatchService';
 
 export interface StockMovementFilters {
   productId?: string;
@@ -128,6 +136,9 @@ export const adjustStockTransaction = async (
     throw new Error('Adjustment quantity must be greater than zero.');
   }
 
+  // Pre-fetch active batches outside transaction for OCC isolation
+  const activeBatches = await getActiveBatchesForProduct(input.productId);
+
   const now = new Date().toISOString();
   const prodRef = doc(db, 'products', input.productId);
   const moveRef = doc(collection(db, 'stockMovements'));
@@ -136,22 +147,63 @@ export const adjustStockTransaction = async (
   let recordedMovement: StockMovementDocument | null = null;
 
   await runTransaction(db, async (transaction) => {
+    // ---------------------------------------------------------------------------------
+    // STEP 1: TRANSACTIONAL READS (ALL READS BEFORE WRITES)
+    // ---------------------------------------------------------------------------------
     const prodSnap = await transaction.get(prodRef);
     if (!prodSnap.exists()) {
       throw new Error('Product not found.');
     }
 
+    const summarySnap = await transaction.get(summaryRef);
+
+    // Read latest snapshots for all active batches
+    const batchSnapshots: Map<string, StockBatchDocument> = new Map();
+    for (const b of activeBatches) {
+      const bRef = doc(db!, STOCK_BATCHES_COLLECTION, b.id);
+      const bSnap = await transaction.get(bRef);
+      if (bSnap.exists()) {
+        batchSnapshots.set(b.id, bSnap.data() as StockBatchDocument);
+      }
+    }
+
+    // Read virtual opening batch snapshot
+    const openBatchId = getOpeningStockBatchId(input.productId);
+    const openRef = doc(db!, STOCK_BATCHES_COLLECTION, openBatchId);
+    const openSnap = await transaction.get(openRef);
+    if (openSnap.exists()) {
+      batchSnapshots.set(openBatchId, openSnap.data() as StockBatchDocument);
+    }
+
+    // ---------------------------------------------------------------------------------
+    // STEP 2: BUSINESS LOGIC & BATCH MUTATIONS
+    // ---------------------------------------------------------------------------------
     const product = prodSnap.data() as ProductDocument;
     const previousStock = Number(product.currentStock || 0);
     const lowStockThreshold = Number(product.lowStockThreshold || 0);
-    const costPrice = Number(product.costPrice || 0);
 
     let newStock = previousStock;
     let movementType: 'in' | 'out' = 'in';
+    let stockQtyDelta = 0;
+    let stockValueDelta = 0;
 
     if (input.adjustmentType === 'add') {
       newStock = previousStock + qty;
       movementType = 'in';
+      stockQtyDelta = qty;
+
+      // Add to opening/adjustment batch with catalog cost basis
+      const costBasis = Number(product.costPrice) || 0;
+      const valueAdded = addStockBatchInTransaction(
+        transaction,
+        product,
+        qty,
+        costBasis,
+        input.reason,
+        now,
+        batchSnapshots
+      );
+      stockValueDelta = valueAdded;
     } else {
       if (previousStock - qty < 0) {
         throw new Error(
@@ -160,6 +212,18 @@ export const adjustStockTransaction = async (
       }
       newStock = previousStock - qty;
       movementType = 'out';
+      stockQtyDelta = -qty;
+
+      // Deplete FIFO batches (e.g. damaged stock removed from saleable batches)
+      const fifoResult = depleteFifoBatchesInTransaction(
+        transaction,
+        product,
+        activeBatches,
+        qty,
+        now,
+        batchSnapshots
+      );
+      stockValueDelta = -fifoResult.totalCogs;
     }
 
     const wasLow = previousStock <= lowStockThreshold;
@@ -168,9 +232,9 @@ export const adjustStockTransaction = async (
     if (wasLow && !isNowLow) lowStockDelta = -1;
     if (!wasLow && isNowLow) lowStockDelta = 1;
 
-    const stockQtyDelta = movementType === 'in' ? qty : -qty;
-    const stockValueDelta = stockQtyDelta * costPrice;
-
+    // ---------------------------------------------------------------------------------
+    // STEP 3: TRANSACTIONAL WRITES
+    // ---------------------------------------------------------------------------------
     // 1. Update product
     transaction.update(prodRef, {
       currentStock: newStock,
@@ -195,7 +259,6 @@ export const adjustStockTransaction = async (
     transaction.set(moveRef, recordedMovement);
 
     // 3. Atomically update summary
-    const summarySnap = await transaction.get(summaryRef);
     if (summarySnap.exists()) {
       transaction.update(summaryRef, {
         totalStockQuantity: increment(stockQtyDelta),

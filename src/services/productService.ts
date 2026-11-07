@@ -3,6 +3,7 @@ import {
   doc,
   getDoc,
   getDocs,
+  setDoc,
   updateDoc,
   deleteDoc,
   query,
@@ -21,12 +22,16 @@ import type {
 } from '../types/database';
 import { logAuditEvent } from './auditService';
 import { updateInventorySummaryDeltas } from './summaryService';
+import { getPublisherById } from './publisherService';
+import { getSeriesById } from './seriesService';
 
 export interface ProductFilters {
   classification?: ItemClassification | 'all';
   categoryId?: string | 'all';
   status?: 'all' | 'active' | 'inactive';
   stockStatus?: 'all' | 'in_stock' | 'low_stock' | 'out_of_stock';
+  publisherId?: string | 'all';
+  seriesId?: string | 'all';
   searchTerm?: string;
 }
 
@@ -65,6 +70,7 @@ export const generateSuggestedSku = (classification: ItemClassification, title: 
   const prefixMap: Record<ItemClassification, string> = {
     book: 'BK',
     notebook: 'NB',
+    register: 'RG',
     stationery: 'ST',
     general: 'GN',
   };
@@ -139,6 +145,18 @@ export const getProductsPaginated = async (
       });
     }
 
+    // Filter by publisher
+    if (filters.publisherId && filters.publisherId !== 'all') {
+      products = products.filter(
+        (p) => p.publisherId === filters.publisherId || p.publisherName === filters.publisherId
+      );
+    }
+
+    // Filter by series
+    if (filters.seriesId && filters.seriesId !== 'all') {
+      products = products.filter((p) => p.seriesId === filters.seriesId);
+    }
+
     if (filters.searchTerm && filters.searchTerm.trim()) {
       const term = filters.searchTerm.trim().toLowerCase();
       products = products.filter((p) =>
@@ -146,7 +164,10 @@ export const getProductsPaginated = async (
         p.sku.toLowerCase().includes(term) ||
         (p.barcode && p.barcode.toLowerCase().includes(term)) ||
         (p.authorOrPublisher && p.authorOrPublisher.toLowerCase().includes(term)) ||
-        (p.categoryName && p.categoryName.toLowerCase().includes(term))
+        (p.categoryName && p.categoryName.toLowerCase().includes(term)) ||
+        (p.notebookSize && p.notebookSize.toLowerCase().includes(term)) ||
+        (p.notebookSheets && p.notebookSheets.toLowerCase().includes(term)) ||
+        (p.notebookGrammage && p.notebookGrammage.toLowerCase().includes(term))
       );
     }
 
@@ -184,10 +205,20 @@ export interface CreateProductInput {
   classification: ItemClassification;
   categoryId: string;
   categoryName?: string;
+  publisherId?: string;
+  publisherName?: string;
+  seriesId?: string;
+  seriesName?: string;
   authorOrPublisher?: string;
   edition?: string;
+  notebookSize?: string;
+  notebookSheets?: string;
+  notebookGrammage?: string;
   costPrice: number;
   retailPrice: number;
+  originalPrice?: number;
+  mrp?: number;
+  publisherDiscountPercent?: number;
   wholesalePrice?: number;
   currentStock: number;
   lowStockThreshold: number;
@@ -209,11 +240,51 @@ export const createProduct = async (
     throw new Error(`SKU "${input.sku}" is already assigned to another product.`);
   }
 
+  // Resolve and validate Publisher & Series hierarchy
+  let resolvedPublisherId = input.publisherId?.trim() || undefined;
+  let resolvedPublisherName = input.publisherName?.trim() || undefined;
+  let resolvedSeriesId = input.seriesId?.trim() || undefined;
+  let resolvedSeriesName = input.seriesName?.trim() || undefined;
+
+  if (resolvedSeriesId) {
+    if (!resolvedPublisherId) {
+      throw new Error('A series cannot be assigned without selecting a publisher.');
+    }
+    const seriesDoc = await getSeriesById(resolvedSeriesId);
+    if (!seriesDoc) {
+      throw new Error(`Series with ID "${resolvedSeriesId}" was not found.`);
+    }
+    if (seriesDoc.publisherId !== resolvedPublisherId) {
+      throw new Error(
+        `The selected series "${seriesDoc.name}" does not belong to the selected publisher.`
+      );
+    }
+    resolvedSeriesName = seriesDoc.name;
+    if (!resolvedPublisherName) {
+      resolvedPublisherName = seriesDoc.publisherName;
+    }
+  } else if (resolvedPublisherId && !resolvedPublisherName) {
+    const pubDoc = await getPublisherById(resolvedPublisherId);
+    if (pubDoc) {
+      resolvedPublisherName = pubDoc.name;
+    }
+  }
+
   const batch = writeBatch(db);
   const prodRef = doc(collection(db, 'products'));
   const now = new Date().toISOString();
 
   const isLowStock = input.currentStock <= input.lowStockThreshold;
+
+  const mrp = Number(input.retailPrice || input.originalPrice || input.mrp) || 0;
+  const pubDiscount = typeof input.publisherDiscountPercent === 'number'
+    ? Math.max(0, Math.min(100, input.publisherDiscountPercent))
+    : 0;
+  // Actual Purchase Cost = MRP * (1 - Publisher Discount % / 100)
+  const calculatedCost = Math.round((mrp * (1 - pubDiscount / 100)) * 100) / 100;
+  const actualCost = typeof input.costPrice === 'number' && input.costPrice >= 0
+    ? Number(input.costPrice)
+    : calculatedCost;
 
   const newProduct: ProductDocument = {
     id: prodRef.id,
@@ -223,11 +294,21 @@ export const createProduct = async (
     classification: input.classification,
     categoryId: input.categoryId,
     categoryName: input.categoryName || '',
+    publisherId: resolvedPublisherId,
+    publisherName: resolvedPublisherName,
+    seriesId: resolvedSeriesId,
+    seriesName: resolvedSeriesName,
     authorOrPublisher: input.authorOrPublisher?.trim() || '',
     edition: input.edition?.trim() || '',
-    costPrice: Number(input.costPrice) || 0,
-    retailPrice: Number(input.retailPrice) || 0,
-    wholesalePrice: Number(input.wholesalePrice) || Number(input.retailPrice) || 0,
+    notebookSize: input.notebookSize?.trim() || undefined,
+    notebookSheets: input.notebookSheets?.trim() || undefined,
+    notebookGrammage: input.notebookGrammage?.trim() || undefined,
+    costPrice: actualCost,
+    retailPrice: mrp,
+    originalPrice: mrp,
+    mrp: mrp,
+    publisherDiscountPercent: pubDiscount,
+    wholesalePrice: Number(input.wholesalePrice) || mrp,
     currentStock: Number(input.currentStock) || 0,
     lowStockThreshold: Number(input.lowStockThreshold) || 5,
     unit: input.unit || 'piece',
@@ -270,6 +351,10 @@ export const createProduct = async (
     lowStockDelta: isLowStock ? 1 : 0,
   });
 
+  if (newProduct.publisherName) {
+    registerLocalPublisher(newProduct.publisherName);
+  }
+
   await logAuditEvent(
     'CREATE_PRODUCT',
     'products',
@@ -303,7 +388,19 @@ export const updateProduct = async (
   const now = new Date().toISOString();
   const newCurrentStock = updates.currentStock !== undefined ? Number(updates.currentStock) : existing.currentStock;
   const newLowThreshold = updates.lowStockThreshold !== undefined ? Number(updates.lowStockThreshold) : existing.lowStockThreshold;
-  const newCostPrice = updates.costPrice !== undefined ? Number(updates.costPrice) : existing.costPrice;
+
+  const mrp = updates.retailPrice !== undefined
+    ? Number(updates.retailPrice)
+    : (updates.originalPrice !== undefined ? Number(updates.originalPrice) : existing.retailPrice);
+
+  const pubDiscount = updates.publisherDiscountPercent !== undefined
+    ? Math.max(0, Math.min(100, Number(updates.publisherDiscountPercent)))
+    : (existing.publisherDiscountPercent !== undefined
+        ? existing.publisherDiscountPercent
+        : (existing.retailPrice > 0 ? Math.max(0, Math.round(((existing.retailPrice - existing.costPrice) / existing.retailPrice) * 100)) : 0));
+
+  const calculatedCost = Math.round((mrp * (1 - pubDiscount / 100)) * 100) / 100;
+  const newCostPrice = updates.costPrice !== undefined ? Number(updates.costPrice) : calculatedCost;
   const isLowStock = newCurrentStock <= newLowThreshold;
 
   const stockDiff = newCurrentStock - existing.currentStock;
@@ -314,6 +411,57 @@ export const updateProduct = async (
   const batch = writeBatch(db);
   const prodRef = doc(db, 'products', id);
 
+  // Handle Publisher & Series hierarchy
+  let targetPublisherId = updates.publisherId !== undefined ? updates.publisherId : existing.publisherId;
+  let targetSeriesId = updates.seriesId !== undefined ? updates.seriesId : existing.seriesId;
+  let targetPublisherName = updates.publisherName !== undefined ? updates.publisherName : existing.publisherName;
+  let targetSeriesName = updates.seriesName !== undefined ? updates.seriesName : existing.seriesName;
+
+  // If publisher was changed without specifying a new series, clear existing series
+  if (updates.publisherId !== undefined && updates.publisherId !== existing.publisherId && updates.seriesId === undefined) {
+    targetSeriesId = undefined;
+    targetSeriesName = undefined;
+  }
+
+  // If series was explicitly cleared
+  if (updates.seriesId === '' || updates.seriesId === null) {
+    targetSeriesId = undefined;
+    targetSeriesName = undefined;
+  }
+
+  // If publisher was explicitly cleared
+  if (updates.publisherId === '' || updates.publisherId === null) {
+    targetPublisherId = undefined;
+    targetPublisherName = undefined;
+    targetSeriesId = undefined;
+    targetSeriesName = undefined;
+  }
+
+  // Validate that series strictly belongs to target publisher if assigned
+  if (targetSeriesId) {
+    if (!targetPublisherId) {
+      throw new Error('A series cannot be assigned without selecting a publisher.');
+    }
+    const seriesDoc = await getSeriesById(targetSeriesId);
+    if (!seriesDoc) {
+      throw new Error(`Series with ID "${targetSeriesId}" was not found.`);
+    }
+    if (seriesDoc.publisherId !== targetPublisherId) {
+      throw new Error(
+        `The selected series "${seriesDoc.name}" does not belong to the selected publisher.`
+      );
+    }
+    targetSeriesName = seriesDoc.name;
+    if (!targetPublisherName) {
+      targetPublisherName = seriesDoc.publisherName;
+    }
+  } else if (targetPublisherId && updates.publisherId !== undefined) {
+    const pubDoc = await getPublisherById(targetPublisherId);
+    if (pubDoc) {
+      targetPublisherName = pubDoc.name;
+    }
+  }
+
   const updatedDocData: Partial<ProductDocument> = {
     ...updates,
     ...(updates.sku && { sku: updates.sku.trim().toUpperCase() }),
@@ -321,9 +469,19 @@ export const updateProduct = async (
       title: updates.title.trim(),
       titleSearch: updates.title.trim().toLowerCase(),
     }),
-    ...(updates.costPrice !== undefined && { costPrice: newCostPrice }),
-    ...(updates.retailPrice !== undefined && { retailPrice: Number(updates.retailPrice) }),
-    ...(updates.wholesalePrice !== undefined && { wholesalePrice: Number(updates.wholesalePrice) }),
+    publisherId: targetPublisherId || undefined,
+    publisherName: targetPublisherName || undefined,
+    seriesId: targetSeriesId || undefined,
+    seriesName: targetSeriesName || undefined,
+    ...(updates.notebookSize !== undefined && { notebookSize: updates.notebookSize.trim() }),
+    ...(updates.notebookSheets !== undefined && { notebookSheets: updates.notebookSheets.trim() }),
+    ...(updates.notebookGrammage !== undefined && { notebookGrammage: updates.notebookGrammage.trim() }),
+    costPrice: newCostPrice,
+    retailPrice: mrp,
+    originalPrice: mrp,
+    mrp: mrp,
+    publisherDiscountPercent: pubDiscount,
+    wholesalePrice: updates.wholesalePrice !== undefined ? Number(updates.wholesalePrice) : (existing.wholesalePrice || mrp),
     currentStock: newCurrentStock,
     lowStockThreshold: newLowThreshold,
     isLowStock,
@@ -367,6 +525,10 @@ export const updateProduct = async (
     stockValueDelta: valueDiff,
     lowStockDelta,
   });
+
+  if (updatedDocData.publisherName) {
+    registerLocalPublisher(updatedDocData.publisherName);
+  }
 
   await logAuditEvent(
     'UPDATE_PRODUCT',
@@ -436,4 +598,142 @@ export const deleteProduct = async (
     userId,
     userEmail
   );
+};
+
+// ---------------------------------------------------------------------------------
+// PUBLISHER REGISTRY & SEARCHABLE RETRIEVAL
+// ---------------------------------------------------------------------------------
+let cachedPublishers: string[] | null = null;
+let lastPublishersFetchTime = 0;
+const PUBLISHERS_CACHE_TTL = 30000; // 30 seconds
+
+/**
+ * Fetches distinct publisher names from the existing products collection.
+ * Deduplicates case-insensitively, collapses extra whitespace, and preserves exact spelling.
+ */
+export const getExistingPublishers = async (forceRefresh = false): Promise<string[]> => {
+  if (!forceRefresh && cachedPublishers && Date.now() - lastPublishersFetchTime < PUBLISHERS_CACHE_TTL) {
+    return cachedPublishers;
+  }
+
+  if (!db) return cachedPublishers || [];
+
+  try {
+    const snap = await getDocs(collection(db, 'products'));
+    const map = new Map<string, string>(); // lowercase-normalized -> exact original casing
+
+    snap.docs.forEach((d) => {
+      const data = d.data() as ProductDocument;
+      const raw = data.publisherName;
+      if (raw && typeof raw === 'string') {
+        const cleaned = raw.replace(/\s+/g, ' ').trim();
+        if (cleaned.length > 0) {
+          const key = cleaned.toLowerCase();
+          if (!map.has(key)) {
+            map.set(key, cleaned);
+          }
+        }
+      }
+    });
+
+    cachedPublishers = Array.from(map.values()).sort((a, b) => a.localeCompare(b));
+    lastPublishersFetchTime = Date.now();
+    return cachedPublishers;
+  } catch (err) {
+    console.error('Failed to get existing publishers:', err);
+    return cachedPublishers || [];
+  }
+};
+
+/**
+ * Registers a newly created or validated publisher name into local in-memory pool.
+ * Prevents case-insensitive duplicates and whitespace differences.
+ */
+export const registerLocalPublisher = (name: string): void => {
+  if (!name || typeof name !== 'string') return;
+  const cleaned = name.replace(/\s+/g, ' ').trim();
+  if (cleaned.length === 0) return;
+
+  const key = cleaned.toLowerCase();
+  if (!cachedPublishers) cachedPublishers = [];
+  if (!cachedPublishers.some((p) => p.replace(/\s+/g, ' ').trim().toLowerCase() === key)) {
+    cachedPublishers = [...cachedPublishers, cleaned].sort((a, b) => a.localeCompare(b));
+  }
+};
+
+/**
+ * Safe Migration Backfill Utility:
+ * - Scans existing products with non-empty publisherName.
+ * - Creates PublisherDocument records in 'publishers' collection if missing.
+ * - Updates product.publisherId with matching publisher ID.
+ * - Leaves product.seriesId as undefined (NEVER guesses or invents series).
+ * - Preserves all pricing, stock batches, and historical sales records.
+ */
+export const backfillPublishersFromProducts = async (
+  userId = 'system',
+  userEmail = 'admin@sadiqbookagency.com'
+): Promise<{ publishersCreated: number; productsMapped: number }> => {
+  if (!db) throw new Error('Firestore not initialized');
+
+  const productsSnap = await getDocs(collection(db, 'products'));
+  const publishersSnap = await getDocs(collection(db, 'publishers'));
+
+  const existingPublishersMap = new Map<string, string>(); // normalizedName -> docId
+  publishersSnap.docs.forEach((d) => {
+    const data = d.data();
+    if (data.normalizedName) {
+      existingPublishersMap.set(data.normalizedName, d.id);
+    }
+  });
+
+  let publishersCreated = 0;
+  let productsMapped = 0;
+  const now = new Date().toISOString();
+
+  for (const prodDoc of productsSnap.docs) {
+    const prodData = prodDoc.data() as ProductDocument;
+    const rawPubName = prodData.publisherName?.replace(/\s+/g, ' ').trim();
+    if (!rawPubName) continue;
+
+    const normalizedPub = rawPubName.toLowerCase();
+    let pubId = existingPublishersMap.get(normalizedPub);
+
+    if (!pubId) {
+      const slug = normalizedPub.replace(/[^a-z0-9]/g, '_').slice(0, 40);
+      pubId = `pub_${slug || 'general'}`;
+      const pubRef = doc(db, 'publishers', pubId);
+      await setDoc(pubRef, {
+        id: pubId,
+        name: rawPubName,
+        normalizedName: normalizedPub,
+        isActive: true,
+        seriesCount: 0,
+        productCount: 0,
+        createdAt: now,
+        updatedAt: now,
+      });
+      existingPublishersMap.set(normalizedPub, pubId);
+      publishersCreated++;
+    }
+
+    if (prodData.publisherId !== pubId) {
+      await updateDoc(doc(db, 'products', prodDoc.id), {
+        publisherId: pubId,
+        publisherName: rawPubName,
+        updatedAt: now,
+      });
+      productsMapped++;
+    }
+  }
+
+  await logAuditEvent(
+    'MIGRATE_PUBLISHERS',
+    'products',
+    `Backfill completed: ${publishersCreated} publishers created, ${productsMapped} products mapped.`,
+    'SYSTEM_MIGRATION',
+    userId,
+    userEmail
+  );
+
+  return { publishersCreated, productsMapped };
 };

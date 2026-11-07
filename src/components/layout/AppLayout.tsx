@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Outlet } from 'react-router-dom';
+import { Outlet, useLocation } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
 import { Header } from './Header';
 import { MobileNav } from './MobileNav';
@@ -7,6 +7,8 @@ import { Footer } from './Footer';
 
 export const AppLayout: React.FC = () => {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const location = useLocation();
+  const isPos = location.pathname === '/pos';
 
   return (
     <div className="min-h-screen bg-[#F4F7FB] flex overflow-x-hidden">
@@ -22,11 +24,17 @@ export const AppLayout: React.FC = () => {
       <div className="flex-1 flex flex-col min-w-0 lg:pl-64">
         <Header onToggleMobileNav={() => setMobileNavOpen(true)} />
 
-        <main className="flex-1 p-4 sm:p-6 lg:p-8 max-w-7xl w-full mx-auto">
+        <main
+          className={
+            isPos
+              ? 'flex-1 w-full p-1 sm:p-2 lg:p-3 flex flex-col overflow-hidden'
+              : 'flex-1 p-3 sm:p-5 lg:p-8 max-w-7xl w-full mx-auto'
+          }
+        >
           <Outlet />
         </main>
 
-        <Footer />
+        {!isPos && <Footer />}
       </div>
     </div>
   );

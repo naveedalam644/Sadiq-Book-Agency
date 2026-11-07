@@ -2,22 +2,37 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Helper functions for secure role and authentication checks
+    // -------------------------------------------------------------------------
+    // HELPER FUNCTIONS: STRICT ACTIVE-USER ROLE VERIFICATION (NO CLAIM BYPASS)
+    // -------------------------------------------------------------------------
     function isAuthenticated() {
       return request.auth != null;
     }
 
-    // Checks if the authenticated user has an active admin record or custom claim
-    function isAdmin() {
-      return isAuthenticated() && (
-        request.auth.token.admin == true ||
-        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' &&
-         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isActive == true)
-      );
+    function getUserDoc() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
     }
 
-    // Checks if the user is operating on their own user document
+    // Active status must be strictly verified against the database.
+    // Even if a user possesses a valid token, if isActive != true, all access is revoked.
+    function isUserActive() {
+      return isAuthenticated() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        getUserDoc().isActive == true;
+    }
+
+    function isAdmin() {
+      return isUserActive() && getUserDoc().role == 'admin';
+    }
+
+    function isCashier() {
+      return isUserActive() && getUserDoc().role == 'cashier';
+    }
+
+    function isStaff() {
+      return isUserActive() && (getUserDoc().role == 'admin' || getUserDoc().role == 'cashier');
+    }
+
     function isSelf(userId) {
       return isAuthenticated() && request.auth.uid == userId;
     }
@@ -27,79 +42,469 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
-    // Users collection:
-    // Only admins can list users or create new user profiles.
-    // Individual users can read their own profile.
+    // -------------------------------------------------------------------------
+    // 1. USERS COLLECTION
+    // -------------------------------------------------------------------------
     match /users/{userId} {
       allow read: if isSelf(userId) || isAdmin();
       allow create, update, delete: if isAdmin();
     }
 
-    // System Settings (Store details, invoice counter, business rules, summaries):
-    // Authenticated staff can read; only admins can modify
+    // -------------------------------------------------------------------------
+    // 2. SETTINGS COLLECTION
+    // -------------------------------------------------------------------------
     match /settings/{settingId} {
-      allow read: if isAuthenticated();
+      allow read: if isStaff();
       allow write: if isAdmin();
     }
 
-    // Audit logs:
-    // Append-only for system events, readable only by admin
+    // -------------------------------------------------------------------------
+    // 3. AUDIT LOGS (STRICTLY APPEND-ONLY FOR AUDITING)
+    // -------------------------------------------------------------------------
     match /auditLogs/{logId} {
       allow read: if isAdmin();
-      allow create: if isAdmin();
+      allow create: if isStaff() && !exists(/databases/$(database)/documents/auditLogs/$(logId));
       allow update, delete: if false;
     }
 
-    // Products collection: Master catalog for books, notebooks, registers, stationery
+    // -------------------------------------------------------------------------
+    // 4. PRODUCTS COLLECTION (STOCK INTEGRITY VIA getAfter LINKAGE)
+    // -------------------------------------------------------------------------
     match /products/{productId} {
-      allow read, write: if isAdmin();
+      allow read: if isStaff();
+      allow create, delete: if isAdmin();
+      // Admins have full update capability.
+      // Cashiers can update stock ONLY:
+      // a) Decrement stock as part of an atomic sale (linked to sales via getAfter/existsAfter)
+      // b) Increment stock as part of an atomic sales return (linked to salesReturns via existsAfter)
+      allow update: if isAdmin() || (
+        isCashier() &&
+        (
+          // Sale stock decrement
+          (
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['currentStock', 'isLowStock', 'lastSaleId', 'updatedAt']) &&
+            request.resource.data.currentStock < resource.data.currentStock &&
+            request.resource.data.currentStock >= 0 &&
+            request.resource.data.lastSaleId is string &&
+            existsAfter(/databases/$(database)/documents/sales/$(request.resource.data.lastSaleId)) &&
+            productId in getAfter(/databases/$(database)/documents/sales/$(request.resource.data.lastSaleId)).data.productIds
+          ) ||
+          // Return stock increment (Fix 5)
+          (
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['currentStock', 'isLowStock', 'lastReturnNo', 'updatedAt']) &&
+            request.resource.data.currentStock > resource.data.currentStock &&
+            request.resource.data.lastReturnNo is string &&
+            existsAfter(/databases/$(database)/documents/salesReturns/$(request.resource.data.lastReturnNo))
+          )
+        )
+      );
     }
 
-    // Categories collection: Classification hierarchy
+    // -------------------------------------------------------------------------
+    // 5. CATEGORIES COLLECTION
+    // -------------------------------------------------------------------------
     match /categories/{categoryId} {
-      allow read, write: if isAdmin();
+      allow read: if isStaff();
+      allow write: if isAdmin();
     }
 
-    // Suppliers collection: Publishing houses, factories, paper mills
+    // -------------------------------------------------------------------------
+    // 5b. PUBLISHERS COLLECTION
+    // -------------------------------------------------------------------------
+    match /publishers/{publisherId} {
+      allow read: if isStaff();
+      allow write: if isAdmin();
+    }
+
+    // -------------------------------------------------------------------------
+    // 5c. SERIES COLLECTION
+    // -------------------------------------------------------------------------
+    match /series/{seriesId} {
+      allow read: if isStaff();
+      allow write: if isAdmin();
+    }
+
+    // -------------------------------------------------------------------------
+    // 5d. NOTEBOOK & REGISTER ATTRIBUTES COLLECTION
+    // -------------------------------------------------------------------------
+    match /notebookAttributes/{attributeId} {
+      allow read: if isStaff();
+      allow write: if isAdmin();
+    }
+
+    // -------------------------------------------------------------------------
+    // 5e. EDUCATIONAL BOARDS, SCHOOLS & SYLLABUS SETS COLLECTIONS
+    // -------------------------------------------------------------------------
+    match /boards/{boardId} {
+      allow read: if isStaff();
+      allow write: if isAdmin();
+    }
+
+    match /schools/{schoolId} {
+      allow read: if isStaff();
+      allow write: if isAdmin();
+    }
+
+    match /syllabusSets/{setId} {
+      allow read: if isStaff();
+      allow write: if isAdmin();
+    }
+
+    // -------------------------------------------------------------------------
+    // 5f. ROUGH BILLS & ESTIMATES (CUSTOMER ESTIMATES & PUBLISHER ORDERS)
+    // -------------------------------------------------------------------------
+    match /roughBills/{billId} {
+      allow read, write: if isStaff();
+    }
+
+    // -------------------------------------------------------------------------
+    // 6. SUPPLIERS COLLECTION
+    // -------------------------------------------------------------------------
     match /suppliers/{supplierId} {
-      allow read, write: if isAdmin();
+      allow read: if isStaff();
+      allow write: if isAdmin();
     }
 
-    // Purchases collection: Invoices recording incoming stock
+    // -------------------------------------------------------------------------
+    // 7. PURCHASES COLLECTION
+    // -------------------------------------------------------------------------
     match /purchases/{purchaseId} {
-      allow read, write: if isAdmin();
-    }
-
-    // Stock movements: Append-only audit trail recording every inventory increment or decrement
-    match /stockMovements/{movementId} {
-      allow read: if isAdmin();
-      allow create: if isAdmin();
+      allow read: if isStaff();
+      allow create: if isAdmin() && !exists(/databases/$(database)/documents/purchases/$(purchaseId));
       allow update, delete: if false;
     }
 
-    // Future Business Modules (Reserved for subsequent phases):
+    // -------------------------------------------------------------------------
+    // 7b. STOCK BATCHES COLLECTION (FIFO BATCH TRACKING & FINANCIAL INTEGRITY)
+    // -------------------------------------------------------------------------
+    match /stockBatches/{batchId} {
+      allow read: if isStaff();
+
+      // Batch creation:
+      // a) Admin creates purchase intake batch linked to atomic purchase doc in same transaction
+      // b) Admin creates opening batch during stock intake migration or manual adjustment
+      // c) Cashier/Staff creates virtual opening batch ONLY IF linked to an atomic sale via existsAfter()
+      //    where productId matches an item in the sale, unitCost matches product catalog, and pre-sale stock bounds intake
+      // d) Cashier/Staff creates virtual opening batch ONLY IF linked to an atomic salesReturn via existsAfter()
+      //    for legacy return where batch records didn't exist
+      allow create: if isStaff() && !exists(/databases/$(database)/documents/stockBatches/$(batchId)) && (
+        // Case 1: Purchase Intake Batch (Admin Only, linked to purchase doc)
+        (
+          isAdmin() &&
+          request.resource.data.batchType == 'purchase' &&
+          request.resource.data.purchaseId is string &&
+          existsAfter(/databases/$(database)/documents/purchases/$(request.resource.data.purchaseId)) &&
+          request.resource.data.remainingQuantity == request.resource.data.quantityPurchased &&
+          request.resource.data.quantityPurchased > 0 &&
+          request.resource.data.unitCost is number &&
+          request.resource.data.unitCost >= 0
+        ) ||
+        // Case 2: Opening Batch created by Admin (e.g. purchase intake legacy migration, manual stock init)
+        (
+          isAdmin() &&
+          request.resource.data.batchType == 'opening' &&
+          request.resource.data.productId is string &&
+          exists(/databases/$(database)/documents/products/$(request.resource.data.productId)) &&
+          request.resource.data.remainingQuantity is number &&
+          request.resource.data.remainingQuantity >= 0 &&
+          request.resource.data.quantityPurchased is number &&
+          request.resource.data.quantityPurchased >= request.resource.data.remainingQuantity &&
+          request.resource.data.unitCost is number &&
+          request.resource.data.unitCost >= 0
+        ) ||
+        // Case 3: Virtual Opening Batch created by Cashier during atomic Sale (legacy stock depletion)
+        (
+          isCashier() &&
+          request.resource.data.batchType == 'opening' &&
+          request.resource.data.productId is string &&
+          request.resource.data.lastSaleId is string &&
+          existsAfter(/databases/$(database)/documents/sales/$(request.resource.data.lastSaleId)) &&
+          request.resource.data.productId in getAfter(/databases/$(database)/documents/sales/$(request.resource.data.lastSaleId)).data.productIds &&
+          exists(/databases/$(database)/documents/products/$(request.resource.data.productId)) &&
+          request.resource.data.unitCost == get(/databases/$(database)/documents/products/$(request.resource.data.productId)).data.costPrice &&
+          request.resource.data.quantityPurchased == get(/databases/$(database)/documents/products/$(request.resource.data.productId)).data.currentStock &&
+          request.resource.data.remainingQuantity < request.resource.data.quantityPurchased &&
+          request.resource.data.remainingQuantity >= 0
+        ) ||
+        // Case 4: Virtual Opening Batch created by Cashier during atomic Customer Return (legacy return)
+        (
+          isCashier() &&
+          request.resource.data.batchType == 'opening' &&
+          request.resource.data.productId is string &&
+          request.resource.data.lastReturnNo is string &&
+          existsAfter(/databases/$(database)/documents/salesReturns/$(request.resource.data.lastReturnNo)) &&
+          request.resource.data.productId in getAfter(/databases/$(database)/documents/salesReturns/$(request.resource.data.lastReturnNo)).data.productIds &&
+          exists(/databases/$(database)/documents/products/$(request.resource.data.productId)) &&
+          request.resource.data.remainingQuantity is number &&
+          request.resource.data.remainingQuantity > 0 &&
+          request.resource.data.quantityPurchased == request.resource.data.remainingQuantity &&
+          request.resource.data.unitCost >= 0
+        )
+      );
+
+      // Batch updates:
+      // Strictly protects historical cost terms (unitCost, mrp, publisherDiscountPercent, purchaseId, batchType are IMMUTABLE).
+      // Only remainingQuantity, updatedAt, lastSaleId, and lastReturnNo can be modified:
+      // a) Admin can update remainingQuantity (bounded between 0 and quantityPurchased)
+      // b) Cashier Depletion (Sale): linked to atomic sale via existsAfter(sales/...)
+      // c) Cashier Restoration (Customer Return): linked to atomic return via existsAfter(salesReturns/...)
+      allow update: if (
+        // Admin update (e.g. manual adjustments, repairs)
+        (
+          isAdmin() &&
+          (
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['remainingQuantity', 'updatedAt']) ||
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['remainingQuantity', 'updatedAt', 'lastSaleId', 'lastReturnNo'])
+          ) &&
+          request.resource.data.remainingQuantity is number &&
+          request.resource.data.remainingQuantity >= 0 &&
+          request.resource.data.remainingQuantity <= resource.data.quantityPurchased
+        ) ||
+        // Cashier update: strictly linked to legitimate sales or returns
+        (
+          isCashier() &&
+          (
+            // Subcase 1: Depletion linked to atomic sale
+            (
+              request.resource.data.diff(resource.data).affectedKeys().hasOnly(['remainingQuantity', 'updatedAt', 'lastSaleId']) &&
+              request.resource.data.remainingQuantity is number &&
+              request.resource.data.remainingQuantity >= 0 &&
+              request.resource.data.remainingQuantity < resource.data.remainingQuantity &&
+              request.resource.data.lastSaleId is string &&
+              existsAfter(/databases/$(database)/documents/sales/$(request.resource.data.lastSaleId)) &&
+              resource.data.productId in getAfter(/databases/$(database)/documents/sales/$(request.resource.data.lastSaleId)).data.productIds
+            ) ||
+            // Subcase 2: Restoration linked to atomic customer return
+            (
+              request.resource.data.diff(resource.data).affectedKeys().hasOnly(['remainingQuantity', 'updatedAt', 'lastReturnNo']) &&
+              request.resource.data.remainingQuantity is number &&
+              request.resource.data.remainingQuantity > resource.data.remainingQuantity &&
+              request.resource.data.remainingQuantity <= resource.data.quantityPurchased &&
+              request.resource.data.lastReturnNo is string &&
+              existsAfter(/databases/$(database)/documents/salesReturns/$(request.resource.data.lastReturnNo)) &&
+              resource.data.productId in getAfter(/databases/$(database)/documents/salesReturns/$(request.resource.data.lastReturnNo)).data.productIds
+            )
+          )
+        )
+      );
+
+      allow delete: if false;
+    }
+
+    // -------------------------------------------------------------------------
+    // 8. STOCK MOVEMENTS (STRICTLY APPEND-ONLY, LINKED VIA existsAfter)
+    // -------------------------------------------------------------------------
+    match /stockMovements/{movementId} {
+      allow read: if isStaff();
+      allow create: if (isAdmin() && !exists(/databases/$(database)/documents/stockMovements/$(movementId))) || (
+        isCashier() &&
+        !exists(/databases/$(database)/documents/stockMovements/$(movementId)) &&
+        request.resource.data.quantity > 0 &&
+        request.resource.data.recordedByUserId == request.auth.uid &&
+        (
+          // Sale movement out
+          (
+            request.resource.data.movementType == 'out' &&
+            request.resource.data.reason == 'sale' &&
+            existsAfter(/databases/$(database)/documents/sales/$(request.resource.data.referenceDocId))
+          ) ||
+          // Return movement in (Fix 5)
+          (
+            request.resource.data.movementType == 'in' &&
+            request.resource.data.reason == 'customer_return' &&
+            existsAfter(/databases/$(database)/documents/salesReturns/$(request.resource.data.referenceDocId))
+          )
+        )
+      );
+      allow update, delete: if false;
+    }
+
+    // -------------------------------------------------------------------------
+    // 9. CUSTOMERS COLLECTION (BALANCE BOUNDS & CREDIT LIMIT PROTECTION)
+    // -------------------------------------------------------------------------
     match /customers/{customerId} {
-      allow read, write: if isAdmin();
+      allow read: if isStaff();
+      allow create, delete: if isAdmin();
+      // Admins have full update capability.
+      // Cashiers can update customer balance ONLY if:
+      // a) Linked to a sale being created in this transaction via existsAfter() (credit increase)
+      // b) Linked to a sales return being created in this transaction via existsAfter() (credit deduction, Fix 5)
+      allow update: if isAdmin() || (
+        isCashier() &&
+        (
+          // Sale balance increase
+          (
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['currentBalance', 'lastSaleId', 'updatedAt']) &&
+            request.resource.data.lastSaleId is string &&
+            existsAfter(/databases/$(database)/documents/sales/$(request.resource.data.lastSaleId)) &&
+            customerId == getAfter(/databases/$(database)/documents/sales/$(request.resource.data.lastSaleId)).data.customerId &&
+            request.resource.data.currentBalance == resource.data.currentBalance + getAfter(/databases/$(database)/documents/sales/$(request.resource.data.lastSaleId)).data.balanceAddedToCredit &&
+            resource.data.creditLimit > 0 &&
+            request.resource.data.currentBalance <= resource.data.creditLimit
+          ) ||
+          // Return balance deduction (Fix 5)
+          (
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['currentBalance', 'lastReturnNo', 'updatedAt']) &&
+            request.resource.data.lastReturnNo is string &&
+            existsAfter(/databases/$(database)/documents/salesReturns/$(request.resource.data.lastReturnNo)) &&
+            customerId == getAfter(/databases/$(database)/documents/salesReturns/$(request.resource.data.lastReturnNo)).data.customerId &&
+            request.resource.data.currentBalance == resource.data.currentBalance - getAfter(/databases/$(database)/documents/salesReturns/$(request.resource.data.lastReturnNo)).data.totalRefundAmount
+          )
+        )
+      );
     }
 
+    // -------------------------------------------------------------------------
+    // 10. CUSTOMER DISCOUNTS COLLECTION
+    // -------------------------------------------------------------------------
     match /customerDiscounts/{discountId} {
-      allow read, write: if isAdmin();
+      allow read: if isStaff();
+      allow write: if isAdmin();
     }
 
-    match /sales/{saleId} {
-      allow read, write: if isAdmin();
-    }
-
-    match /payments/{paymentId} {
-      allow read, write: if isAdmin();
-    }
-
+    // -------------------------------------------------------------------------
+    // 11. CUSTOMER LEDGER (STRICTLY APPEND-ONLY, LINKED VIA getAfter)
+    // -------------------------------------------------------------------------
     match /customerLedger/{ledgerId} {
-      allow read, write: if isAdmin();
+      allow read: if isStaff();
+      allow create: if (isAdmin() && !exists(/databases/$(database)/documents/customerLedger/$(ledgerId))) || (
+        isCashier() &&
+        !exists(/databases/$(database)/documents/customerLedger/$(ledgerId)) &&
+        request.resource.data.amount > 0 &&
+        request.resource.data.recordedByUserId == request.auth.uid &&
+        (
+          // Debit entry linked to sale
+          (
+            request.resource.data.entryType == 'debit' &&
+            request.resource.data.referenceInvoiceNo is string &&
+            existsAfter(/databases/$(database)/documents/sales/$(request.resource.data.referenceInvoiceNo)) &&
+            request.resource.data.customerId == getAfter(/databases/$(database)/documents/sales/$(request.resource.data.referenceInvoiceNo)).data.customerId &&
+            request.resource.data.amount == getAfter(/databases/$(database)/documents/sales/$(request.resource.data.referenceInvoiceNo)).data.balanceAddedToCredit
+          ) ||
+          // Credit entry linked to sales return (Fix 5)
+          (
+            request.resource.data.entryType == 'credit' &&
+            request.resource.data.referenceReceiptNo is string &&
+            existsAfter(/databases/$(database)/documents/salesReturns/$(request.resource.data.referenceReceiptNo)) &&
+            request.resource.data.customerId == getAfter(/databases/$(database)/documents/salesReturns/$(request.resource.data.referenceReceiptNo)).data.customerId &&
+            request.resource.data.amount == getAfter(/databases/$(database)/documents/salesReturns/$(request.resource.data.referenceReceiptNo)).data.totalRefundAmount
+          )
+        )
+      );
+      allow update, delete: if false;
     }
 
+    // -------------------------------------------------------------------------
+    // 12. PAYMENTS (STRICTLY APPEND-ONLY, LINKED VIA getAfter)
+    // -------------------------------------------------------------------------
+    match /payments/{paymentId} {
+      allow read: if isStaff();
+      allow create: if (isAdmin() && !exists(/databases/$(database)/documents/payments/$(paymentId))) || (
+        isCashier() &&
+        !exists(/databases/$(database)/documents/payments/$(paymentId)) &&
+        request.resource.data.amount > 0 &&
+        request.resource.data.receivedByUserId == request.auth.uid &&
+        (
+          // Direct sale incoming payment
+          (
+            request.resource.data.targetType == 'direct_sale' &&
+            existsAfter(/databases/$(database)/documents/sales/$(request.resource.data.referenceId)) &&
+            request.resource.data.amount == getAfter(/databases/$(database)/documents/sales/$(request.resource.data.referenceId)).data.paymentApplied
+          ) ||
+          // Sales refund cash outflow voucher (Fix 4 & Fix 5)
+          (
+            request.resource.data.targetType == 'sales_refund' &&
+            request.resource.data.transactionReference is string &&
+            existsAfter(/databases/$(database)/documents/salesReturns/$(request.resource.data.transactionReference)) &&
+            request.resource.data.amount == getAfter(/databases/$(database)/documents/salesReturns/$(request.resource.data.transactionReference)).data.totalRefundAmount
+          )
+        )
+      );
+      allow update, delete: if false;
+    }
+
+    // -------------------------------------------------------------------------
+    // 13. SALES (STRICTLY APPEND-ONLY, IMMUTABLE HISTORICAL INVOICES)
+    // -------------------------------------------------------------------------
+    match /sales/{saleId} {
+      allow read: if isStaff();
+      allow create: if isStaff() &&
+        !exists(/databases/$(database)/documents/sales/$(saleId)) &&
+        request.resource.data.id == saleId &&
+        request.resource.data.invoiceNo == saleId &&
+        request.resource.data.operatorUserId == request.auth.uid &&
+        request.resource.data.customerType in ['wholesaler', 'marketshop', 'parchon'] &&
+        request.resource.data.customerName is string &&
+        request.resource.data.customerName.size() > 0 &&
+        request.resource.data.items is list &&
+        request.resource.data.items.size() > 0 &&
+        request.resource.data.items.size() <= 100 &&
+        request.resource.data.productIds is list &&
+        request.resource.data.productIds.size() > 0 &&
+        request.resource.data.subtotal is number && request.resource.data.subtotal >= 0 &&
+        request.resource.data.totalDiscount is number && request.resource.data.totalDiscount >= 0 &&
+        request.resource.data.grandTotal is number && request.resource.data.grandTotal >= 0 &&
+        request.resource.data.grandTotal == (request.resource.data.subtotal - request.resource.data.totalDiscount) &&
+        request.resource.data.cashTendered is number && request.resource.data.cashTendered >= 0 &&
+        request.resource.data.changeReturned is number && request.resource.data.changeReturned >= 0 &&
+        request.resource.data.paymentApplied is number && request.resource.data.paymentApplied >= 0 &&
+        request.resource.data.balanceAddedToCredit is number && request.resource.data.balanceAddedToCredit >= 0 &&
+        request.resource.data.paymentStatus in ['paid', 'partial', 'unpaid'] &&
+        request.resource.data.paymentMethod in ['cash', 'bank_transfer', 'credit'];
+      allow update: if isAdmin() &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['dueDate', 'dueDateOverride', 'updatedAt']) &&
+        request.resource.data.dueDate is string &&
+        request.resource.data.dueDate.size() == 10;
+      allow delete: if false;
+    }
+
+    // -------------------------------------------------------------------------
+    // 14. SALES RETURNS & SUMMARIES (AUTHORITATIVE CONCURRENCY & TRANSACTIONAL RETURNS)
+    // -------------------------------------------------------------------------
+    match /salesReturns/{returnId} {
+      allow read: if isStaff();
+      allow create: if isStaff() &&
+        !exists(/databases/$(database)/documents/salesReturns/$(returnId)) &&
+        request.resource.data.id == returnId &&
+        request.resource.data.returnNo == returnId &&
+        request.resource.data.originalInvoiceNo is string &&
+        exists(/databases/$(database)/documents/sales/$(request.resource.data.originalInvoiceNo)) &&
+        request.resource.data.processedByUserId == request.auth.uid &&
+        request.resource.data.totalRefundAmount is number &&
+        request.resource.data.totalRefundAmount > 0 &&
+        request.resource.data.refundMethod in ['cash', 'credit_deduction'];
+      allow update, delete: if false;
+    }
+
+    match /saleReturnSummaries/{invoiceNo} {
+      allow read: if isStaff();
+      allow create, update: if isStaff() &&
+        exists(/databases/$(database)/documents/sales/$(invoiceNo)) &&
+        request.resource.data.invoiceNo == invoiceNo;
+      allow delete: if false;
+    }
+
+    // -------------------------------------------------------------------------
+    // 15. EXPENSES COLLECTION
+    // -------------------------------------------------------------------------
     match /expenses/{expenseId} {
-      allow read, write: if isAdmin();
+      allow read: if isStaff();
+      allow write: if isAdmin();
+    }
+
+    // -------------------------------------------------------------------------
+    // 16. WHATSAPP MESSAGES AUDIT (STAFF READ/LOG, ADMIN STATUS UPDATE)
+    // -------------------------------------------------------------------------
+    match /whatsappMessages/{messageId} {
+      allow read: if isStaff();
+      allow create: if isStaff() &&
+        !exists(/databases/$(database)/documents/whatsappMessages/$(messageId)) &&
+        request.resource.data.id == messageId &&
+        request.resource.data.sentByUserId == request.auth.uid &&
+        request.resource.data.phoneNumberSnapshot is string &&
+        request.resource.data.messageText is string;
+      allow update: if isAdmin();
+      allow delete: if false;
     }
   }
 }

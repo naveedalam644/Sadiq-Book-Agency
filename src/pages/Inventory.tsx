@@ -11,6 +11,9 @@ import {
   RefreshCw,
   Coins,
   Package,
+  Building2,
+  Layers,
+  Tag,
 } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
@@ -21,10 +24,15 @@ import { SearchInput } from '../components/common/SearchInput';
 import { ProductFormModal } from '../components/inventory/ProductFormModal';
 import { ProductDetailModal } from '../components/inventory/ProductDetailModal';
 import { StockAdjustmentModal } from '../components/inventory/StockAdjustmentModal';
+import { ProductHistoryModal } from '../components/inventory/ProductHistoryModal';
+import { PublisherSeriesManagerModal } from '../components/inventory/PublisherSeriesManagerModal';
+import { PriceListTable } from '../components/inventory/PriceListTable';
 import type {
   ProductDocument,
   CategoryDocument,
   StockMovementDocument,
+  PublisherDocument,
+  SeriesDocument,
 } from '../types/database';
 import {
   getProductsPaginated,
@@ -35,6 +43,8 @@ import {
   type ProductFilters,
 } from '../services/productService';
 import { getCategories } from '../services/categoryService';
+import { getActivePublishers } from '../services/publisherService';
+import { getActiveSeriesByPublisher } from '../services/seriesService';
 import {
   getStockMovementsPaginated,
   type StockMovementFilters,
@@ -46,7 +56,7 @@ export const Inventory: React.FC = () => {
   const { currentUser } = useAuth();
   const { success, error: toastError } = useToast();
 
-  const [activeTab, setActiveTab] = useState<'products' | 'movements'>('products');
+  const [activeTab, setActiveTab] = useState<'products' | 'movements' | 'pricelist'>('products');
 
   // Categories
   const [categories, setCategories] = useState<CategoryDocument[]>([]);
@@ -59,6 +69,8 @@ export const Inventory: React.FC = () => {
     categoryId: 'all',
     status: 'all',
     stockStatus: 'all',
+    publisherId: 'all',
+    seriesId: 'all',
     searchTerm: '',
   });
   const [productCursor, setProductCursor] = useState<any>(null);
@@ -85,8 +97,12 @@ export const Inventory: React.FC = () => {
   const [isAddProductModalOpen, setIsAddProductModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<ProductDocument | null>(null);
   const [viewingProduct, setViewingProduct] = useState<ProductDocument | null>(null);
+  const [historyProduct, setHistoryProduct] = useState<ProductDocument | null>(null);
   const [isAdjustmentModalOpen, setIsAdjustmentModalOpen] = useState(false);
   const [selectedProductForAdjustment, setSelectedProductForAdjustment] = useState<string | undefined>();
+  const [isPublisherModalOpen, setIsPublisherModalOpen] = useState(false);
+  const [publishersList, setPublishersList] = useState<PublisherDocument[]>([]);
+  const [seriesList, setSeriesList] = useState<SeriesDocument[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const loadSummary = useCallback(async () => {
@@ -100,14 +116,29 @@ export const Inventory: React.FC = () => {
     }
   }, []);
 
-  // Load Categories & Summary once
+  // Load Categories, Publishers & Summary once
   useEffect(() => {
     getCategories()
       .then((cats) => setCategories(cats))
       .catch((err) => console.error('Failed to load categories:', err));
 
+    getActivePublishers()
+      .then(setPublishersList)
+      .catch((err) => console.warn('Failed to load publishers in inventory:', err));
+
     loadSummary();
   }, [loadSummary]);
+
+  // Cascading series loader for inventory filter
+  useEffect(() => {
+    if (productFilters.publisherId && productFilters.publisherId !== 'all') {
+      getActiveSeriesByPublisher(productFilters.publisherId)
+        .then(setSeriesList)
+        .catch(() => setSeriesList([]));
+    } else {
+      setSeriesList([]);
+    }
+  }, [productFilters.publisherId]);
 
   // Keep filter refs for stable callback access
   const productFiltersRef = useRef(productFilters);
@@ -269,8 +300,14 @@ export const Inventory: React.FC = () => {
             {row.title}
           </div>
           <div className="text-[11px] text-slate-500 truncate mt-0.5">
-            {row.authorOrPublisher ? `${row.authorOrPublisher} • ` : ''}
-            {row.edition || 'Standard Edition'}
+            {row.publisherName ? `${row.publisherName} • ` : row.authorOrPublisher ? `${row.authorOrPublisher} • ` : ''}
+            {row.notebookSize || row.notebookSheets || row.notebookGrammage ? (
+              <span className="text-amber-800 font-semibold">
+                {[row.notebookSize, row.notebookSheets ? `${row.notebookSheets} Sh` : '', row.notebookGrammage].filter(Boolean).join(' • ')}
+              </span>
+            ) : (
+              row.edition || 'Standard Edition'
+            )}
           </div>
         </div>
       ),
@@ -292,6 +329,53 @@ export const Inventory: React.FC = () => {
       ),
     },
     {
+      key: 'series',
+      header: 'Series & Publisher',
+      render: (row) => {
+        const isNb =
+          row.classification === 'notebook' ||
+          row.classification === 'register' ||
+          Boolean(row.notebookSize || row.notebookSheets || row.notebookGrammage);
+
+        if (isNb && (row.notebookSize || row.notebookSheets || row.notebookGrammage)) {
+          return (
+            <div className="text-xs">
+              <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-amber-50 text-amber-900 border border-amber-200/80 text-[10px] font-bold">
+                {[
+                  row.notebookSize,
+                  row.notebookSheets ? `${row.notebookSheets} Sh` : '',
+                  row.notebookGrammage,
+                ]
+                  .filter(Boolean)
+                  .join(' • ')}
+              </span>
+              <div className="text-[11px] text-slate-500 truncate max-w-[150px] mt-0.5">
+                {row.authorOrPublisher || 'Notebook / Register'}
+              </div>
+            </div>
+          );
+        }
+
+        return (
+          <div className="text-xs">
+            <div className="font-bold text-slate-800 truncate max-w-[150px]">
+              {row.seriesName ? (
+                <span className="text-[#071F49] flex items-center gap-1 font-bold">
+                  <Layers className="w-3 h-3 text-[#F5B51B] shrink-0" />
+                  <span className="truncate">{row.seriesName}</span>
+                </span>
+              ) : (
+                <span className="text-slate-400 font-normal italic">Standalone</span>
+              )}
+            </div>
+            <div className="text-[11px] text-slate-500 truncate max-w-[150px] mt-0.5">
+              {row.publisherName || '—'}
+            </div>
+          </div>
+        );
+      },
+    },
+    {
       key: 'classification',
       header: 'Type & Category',
       render: (row) => (
@@ -306,22 +390,37 @@ export const Inventory: React.FC = () => {
       ),
     },
     {
-      key: 'costPrice',
-      header: 'Purchase Cost',
-      align: 'right',
-      render: (row) => (
-        <span className="font-mono text-xs text-slate-700">
-          {formatCurrency(row.costPrice)}
-        </span>
-      ),
-    },
-    {
       key: 'retailPrice',
-      header: 'Retail Price',
+      header: 'Original MRP',
       align: 'right',
       render: (row) => (
         <span className="font-mono text-xs font-bold text-slate-900">
           {formatCurrency(row.retailPrice)}
+        </span>
+      ),
+    },
+    {
+      key: 'publisherDiscount',
+      header: 'Pub. Disc %',
+      align: 'center',
+      render: (row) => {
+        const disc = typeof row.publisherDiscountPercent === 'number'
+          ? row.publisherDiscountPercent
+          : (row.retailPrice > 0 ? Math.max(0, Math.round(((row.retailPrice - row.costPrice) / row.retailPrice) * 100)) : 0);
+        return (
+          <span className="inline-flex items-center text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
+            {disc}%
+          </span>
+        );
+      },
+    },
+    {
+      key: 'costPrice',
+      header: 'Actual Cost',
+      align: 'right',
+      render: (row) => (
+        <span className="font-mono text-xs text-slate-700">
+          {formatCurrency(row.costPrice)}
         </span>
       ),
     },
@@ -378,6 +477,14 @@ export const Inventory: React.FC = () => {
             title="View Details"
           >
             <Eye className="w-4 h-4" />
+          </button>
+          <button
+            type="button"
+            onClick={() => setHistoryProduct(row)}
+            className="p-1.5 text-slate-400 hover:text-[#071F49] hover:bg-slate-100 rounded-lg transition"
+            title="View Product History"
+          >
+            <History className="w-4 h-4" />
           </button>
           <button
             type="button"
@@ -503,6 +610,15 @@ export const Inventory: React.FC = () => {
           <Button
             variant="outline"
             size="sm"
+            onClick={() => setIsPublisherModalOpen(true)}
+            leftIcon={<Building2 className="w-4 h-4 text-[#071F49]" />}
+          >
+            Publishers & Series
+          </Button>
+
+          <Button
+            variant="outline"
+            size="sm"
             onClick={() => {
               setSelectedProductForAdjustment(undefined);
               setIsAdjustmentModalOpen(true);
@@ -572,7 +688,7 @@ export const Inventory: React.FC = () => {
       </div>
 
       {/* 3. Tab Navigation */}
-      <div className="flex border-b border-slate-200">
+      <div className="flex border-b border-slate-200 overflow-x-auto flex-nowrap scrollbar-none">
         <button
           type="button"
           onClick={() => setActiveTab('products')}
@@ -584,6 +700,19 @@ export const Inventory: React.FC = () => {
         >
           <BookOpen className="w-4 h-4 text-[#071F49]" />
           <span>Products & Books Master Catalog</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('pricelist')}
+          className={`px-5 py-3 text-sm font-bold border-b-2 transition flex items-center gap-2 ${
+            activeTab === 'pricelist'
+              ? 'border-[#F5B51B] text-[#071F49] bg-white rounded-t-xl'
+              : 'border-transparent text-slate-500 hover:text-slate-800'
+          }`}
+        >
+          <Tag className="w-4 h-4 text-[#071F49]" />
+          <span>Price List / ریٹ لسٹ</span>
         </button>
 
         <button
@@ -605,14 +734,58 @@ export const Inventory: React.FC = () => {
         <div className="space-y-4">
           {/* Filters Bar */}
           <div className="p-4 bg-white border border-slate-200/90 rounded-2xl shadow-xs space-y-3">
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
-              <div className="sm:col-span-2 lg:col-span-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-7 gap-3">
+              <div className="sm:col-span-2 xl:col-span-2">
                 <SearchInput
                   placeholder="Search books, SKU, barcode, author, brand..."
                   value={productFilters.searchTerm}
                   onSearch={handleProductSearch}
                 />
               </div>
+
+              <select
+                className="text-xs border border-slate-300 rounded-xl px-3 py-2.5 bg-white text-slate-800 focus:outline-none focus:border-[#F5B51B]"
+                value={productFilters.publisherId || 'all'}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setProductFilters((prev) => ({
+                    ...prev,
+                    publisherId: val,
+                    seriesId: 'all',
+                  }));
+                }}
+              >
+                <option value="all">All Publishers</option>
+                {publishersList.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+
+              <select
+                className="text-xs border border-slate-300 rounded-xl px-3 py-2.5 bg-white text-slate-800 focus:outline-none focus:border-[#F5B51B] disabled:bg-slate-50 disabled:text-slate-400"
+                value={productFilters.seriesId || 'all'}
+                disabled={!productFilters.publisherId || productFilters.publisherId === 'all'}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setProductFilters((prev) => ({
+                    ...prev,
+                    seriesId: val,
+                  }));
+                }}
+              >
+                <option value="all">
+                  {!productFilters.publisherId || productFilters.publisherId === 'all'
+                    ? 'All Series (Select Pub first)'
+                    : 'All Series'}
+                </option>
+                {seriesList.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+              </select>
 
               <select
                 className="text-xs border border-slate-300 rounded-xl px-3 py-2.5 bg-white text-slate-800 focus:outline-none focus:border-[#F5B51B]"
@@ -626,7 +799,8 @@ export const Inventory: React.FC = () => {
               >
                 <option value="all">All Classifications</option>
                 <option value="book">Books (Syllabus, Textbooks)</option>
-                <option value="notebook">Notebooks & Registers</option>
+                <option value="notebook">Notebooks</option>
+                <option value="register">Registers</option>
                 <option value="stationery">Stationery & Writing</option>
                 <option value="general">General Items</option>
               </select>
@@ -803,6 +977,16 @@ export const Inventory: React.FC = () => {
         </div>
       )}
 
+      {/* 5. Tab 3: Price List */}
+      {activeTab === 'pricelist' && (
+        <PriceListTable
+          onPriceUpdated={() => {
+            loadProducts(null);
+            loadSummary();
+          }}
+        />
+      )}
+
       {/* 6. Modals */}
       <ProductFormModal
         isOpen={isAddProductModalOpen}
@@ -824,6 +1008,13 @@ export const Inventory: React.FC = () => {
           setEditingProduct(prod);
           setIsAddProductModalOpen(true);
         }}
+        onViewHistory={(prod) => setHistoryProduct(prod)}
+      />
+
+      <ProductHistoryModal
+        isOpen={Boolean(historyProduct)}
+        onClose={() => setHistoryProduct(null)}
+        product={historyProduct}
       />
 
       <StockAdjustmentModal
@@ -836,6 +1027,18 @@ export const Inventory: React.FC = () => {
           loadProducts(null);
           loadMovements(null);
           loadSummary();
+        }}
+      />
+
+      <PublisherSeriesManagerModal
+        isOpen={isPublisherModalOpen}
+        onClose={() => setIsPublisherModalOpen(false)}
+        onDataChanged={() => {
+          loadProducts(null);
+          getActivePublishers().then(setPublishersList);
+          if (productFilters.publisherId && productFilters.publisherId !== 'all') {
+            getActiveSeriesByPublisher(productFilters.publisherId).then(setSeriesList);
+          }
         }}
       />
     </div>
