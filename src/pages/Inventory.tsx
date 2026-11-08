@@ -43,6 +43,7 @@ import {
   type ProductFilters,
 } from '../services/productService';
 import { getCategories } from '../services/categoryService';
+import { STANDARD_CLASSES } from '../services/syllabusService';
 import { getActivePublishers } from '../services/publisherService';
 import { getActiveSeriesByPublisher } from '../services/seriesService';
 import {
@@ -71,6 +72,7 @@ export const Inventory: React.FC = () => {
     stockStatus: 'all',
     publisherId: 'all',
     seriesId: 'all',
+    targetClass: 'all',
     searchTerm: '',
   });
   const [productCursor, setProductCursor] = useState<any>(null);
@@ -296,8 +298,13 @@ export const Inventory: React.FC = () => {
       header: 'Product / Item Title',
       render: (row) => (
         <div className="max-w-xs">
-          <div className="font-bold text-slate-900 truncate hover:text-[#071F49] cursor-pointer" onClick={() => setViewingProduct(row)}>
-            {row.title}
+          <div className="font-bold text-slate-900 truncate hover:text-[#071F49] cursor-pointer flex items-center gap-1.5" onClick={() => setViewingProduct(row)}>
+            <span className="truncate">{row.title}</span>
+            {(row.targetClass || row.className) && (
+              <span className="shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-50 text-[#071F49] border border-blue-200">
+                {row.targetClass || row.className}
+              </span>
+            )}
           </div>
           <div className="text-[11px] text-slate-500 truncate mt-0.5">
             {row.publisherName ? `${row.publisherName} • ` : row.authorOrPublisher ? `${row.authorOrPublisher} • ` : ''}
@@ -734,7 +741,7 @@ export const Inventory: React.FC = () => {
         <div className="space-y-4">
           {/* Filters Bar */}
           <div className="p-4 bg-white border border-slate-200/90 rounded-2xl shadow-xs space-y-3">
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-7 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-3">
               <div className="sm:col-span-2 xl:col-span-2">
                 <SearchInput
                   placeholder="Search books, SKU, barcode, author, brand..."
@@ -783,6 +790,25 @@ export const Inventory: React.FC = () => {
                 {seriesList.map((s) => (
                   <option key={s.id} value={s.id}>
                     {s.name}
+                  </option>
+                ))}
+              </select>
+
+              <select
+                className="text-xs border border-slate-300 rounded-xl px-3 py-2.5 bg-white text-slate-800 focus:outline-none focus:border-[#F5B51B]"
+                value={productFilters.targetClass || 'all'}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setProductFilters((prev) => ({
+                    ...prev,
+                    targetClass: val,
+                  }));
+                }}
+              >
+                <option value="all">All Classes</option>
+                {STANDARD_CLASSES.map((cls) => (
+                  <option key={cls} value={cls}>
+                    {cls}
                   </option>
                 ))}
               </select>

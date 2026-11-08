@@ -1,7 +1,6 @@
 import React from 'react';
-import { Menu, LogOut, Shield, Sparkles, Lock, Unlock } from 'lucide-react';
+import { Menu, LogOut, Shield, Sparkles } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
-import { useAdminLock } from '../../contexts/AdminLockContext';
 
 export interface HeaderProps {
   onToggleMobileNav: () => void;
@@ -9,7 +8,6 @@ export interface HeaderProps {
 
 export const Header: React.FC<HeaderProps> = ({ onToggleMobileNav }) => {
   const { currentUser, logout, isFirebaseReady } = useAuth();
-  const { isSessionUnlocked, lockAll } = useAdminLock();
 
   const businessName =
     import.meta.env.VITE_BUSINESS_NAME || 'Sadiq Book Agency';
@@ -58,34 +56,6 @@ export const Header: React.FC<HeaderProps> = ({ onToggleMobileNav }) => {
               </span>
             )}
           </div>
-
-          {/* Quick Lock Button */}
-          <button
-            type="button"
-            onClick={() => lockAll()}
-            title={
-              isSessionUnlocked
-                ? 'Confidential Sections Unlocked (Click to lock all)'
-                : 'Confidential Sections are Password-Locked'
-            }
-            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold border transition-colors cursor-pointer ${
-              isSessionUnlocked
-                ? 'bg-amber-500/20 text-amber-300 border-amber-400/40 hover:bg-amber-500/30'
-                : 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
-            }`}
-          >
-            {isSessionUnlocked ? (
-              <>
-                <Unlock className="w-3.5 h-3.5 text-amber-400" />
-                <span className="hidden md:inline">Lock Now</span>
-              </>
-            ) : (
-              <>
-                <Lock className="w-3.5 h-3.5 text-emerald-400" />
-                <span className="hidden md:inline">Locked</span>
-              </>
-            )}
-          </button>
 
           {/* Admin User Chip */}
           <div className="flex items-center gap-2.5 pl-2 sm:pl-3 border-l border-[#0E2E70]">

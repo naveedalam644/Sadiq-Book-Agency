@@ -18,6 +18,7 @@ import {
 } from '../../services/productService';
 import { getActivePublishers, createPublisher } from '../../services/publisherService';
 import { getActiveSeriesByPublisher, createSeries } from '../../services/seriesService';
+import { STANDARD_CLASSES } from '../../services/syllabusService';
 
 export interface ProductFormModalProps {
   isOpen: boolean;
@@ -49,6 +50,7 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
   const [seriesList, setSeriesList] = useState<SeriesDocument[]>([]);
   const [selectedSeriesId, setSelectedSeriesId] = useState('');
   const [seriesName, setSeriesName] = useState('');
+  const [targetClass, setTargetClass] = useState('');
 
   // Notebook & Register Direct Specification states (Size, Sheets, Grammage)
   const [notebookSize, setNotebookSize] = useState('');
@@ -130,6 +132,7 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
 
       setAuthorOrPublisher(initialData.authorOrPublisher || '');
       setEdition(initialData.edition || '');
+      setTargetClass(initialData.targetClass || initialData.className || '');
       setNotebookSize(initialData.notebookSize || '');
       setNotebookSheets(initialData.notebookSheets || '');
       setNotebookGrammage(initialData.notebookGrammage || '');
@@ -162,6 +165,7 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
       setSeriesName('');
       setAuthorOrPublisher('');
       setEdition('');
+      setTargetClass('');
       setNotebookSize('');
       setNotebookSheets('');
       setNotebookGrammage('');
@@ -337,6 +341,8 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
       notebookGrammage: isNotebookOrRegister ? (notebookGrammage.trim() || undefined) : undefined,
       authorOrPublisher: authorOrPublisher.trim(),
       edition: edition.trim(),
+      targetClass: targetClass.trim() || undefined,
+      className: targetClass.trim() || undefined,
       costPrice: numActualCost,
       retailPrice: numMrp,
       originalPrice: numMrp,
@@ -547,19 +553,19 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
             </div>
           </div>
         ) : (
-          /* Book / Other Categories: Cascading Hierarchy: 1. Publisher -> 2. Series */
+          /* Book / Other Categories: Cascading Hierarchy: 1. Publisher -> 2. Series -> 3. Class */
           <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
                 <Building2 className="w-4 h-4 text-[#071F49]" />
-                Publisher & Series Hierarchy
+                Publisher, Series & Class Hierarchy
               </span>
               <span className="text-[11px] text-slate-500">
-                Step 1: Select Publisher $\rightarrow$ Step 2: Select Series
+                Step 1: Publisher $\rightarrow$ Step 2: Series $\rightarrow$ Step 3: Class
               </span>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               {/* Step 1: Publisher Cascading Selector */}
               <div className="space-y-1">
                 <div className="flex items-center justify-between">
@@ -673,6 +679,25 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
                     ))}
                   </select>
                 )}
+              </div>
+
+              {/* Step 3: Academic Class Selector */}
+              <div className="space-y-1">
+                <label className="block text-xs font-semibold text-slate-700">
+                  Target Academic Class
+                </label>
+                <select
+                  value={targetClass}
+                  onChange={(e) => setTargetClass(e.target.value)}
+                  className="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-lg focus:ring-1 focus:ring-[#071F49] outline-none cursor-pointer"
+                >
+                  <option value="">-- Select Class (Optional) --</option>
+                  {STANDARD_CLASSES.map((cls) => (
+                    <option key={cls} value={cls}>
+                      {cls}
+                    </option>
+                  ))}
+                </select>
               </div>
             </div>
           </div>

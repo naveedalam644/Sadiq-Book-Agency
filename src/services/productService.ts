@@ -32,6 +32,7 @@ export interface ProductFilters {
   stockStatus?: 'all' | 'in_stock' | 'low_stock' | 'out_of_stock';
   publisherId?: string | 'all';
   seriesId?: string | 'all';
+  targetClass?: string | 'all';
   searchTerm?: string;
 }
 
@@ -157,6 +158,18 @@ export const getProductsPaginated = async (
       products = products.filter((p) => p.seriesId === filters.seriesId);
     }
 
+    // Filter by Class
+    if (filters.targetClass && filters.targetClass !== 'all') {
+      const cls = filters.targetClass.toLowerCase().trim();
+      products = products.filter((p) => {
+        if (p.targetClass && p.targetClass.toLowerCase().trim() === cls) return true;
+        if (p.className && p.className.toLowerCase().trim() === cls) return true;
+        if (p.edition && p.edition.toLowerCase().includes(cls)) return true;
+        if (p.title && p.title.toLowerCase().includes(cls)) return true;
+        return false;
+      });
+    }
+
     if (filters.searchTerm && filters.searchTerm.trim()) {
       const term = filters.searchTerm.trim().toLowerCase();
       products = products.filter((p) =>
@@ -211,6 +224,8 @@ export interface CreateProductInput {
   seriesName?: string;
   authorOrPublisher?: string;
   edition?: string;
+  targetClass?: string;
+  className?: string;
   notebookSize?: string;
   notebookSheets?: string;
   notebookGrammage?: string;
@@ -300,6 +315,8 @@ export const createProduct = async (
     seriesName: resolvedSeriesName,
     authorOrPublisher: input.authorOrPublisher?.trim() || '',
     edition: input.edition?.trim() || '',
+    targetClass: input.targetClass?.trim() || input.className?.trim() || undefined,
+    className: input.targetClass?.trim() || input.className?.trim() || undefined,
     notebookSize: input.notebookSize?.trim() || undefined,
     notebookSheets: input.notebookSheets?.trim() || undefined,
     notebookGrammage: input.notebookGrammage?.trim() || undefined,
@@ -473,6 +490,14 @@ export const updateProduct = async (
     publisherName: targetPublisherName || undefined,
     seriesId: targetSeriesId || undefined,
     seriesName: targetSeriesName || undefined,
+    ...(updates.targetClass !== undefined && {
+      targetClass: updates.targetClass.trim() || undefined,
+      className: updates.targetClass.trim() || undefined,
+    }),
+    ...(updates.className !== undefined && updates.targetClass === undefined && {
+      targetClass: updates.className.trim() || undefined,
+      className: updates.className.trim() || undefined,
+    }),
     ...(updates.notebookSize !== undefined && { notebookSize: updates.notebookSize.trim() }),
     ...(updates.notebookSheets !== undefined && { notebookSheets: updates.notebookSheets.trim() }),
     ...(updates.notebookGrammage !== undefined && { notebookGrammage: updates.notebookGrammage.trim() }),

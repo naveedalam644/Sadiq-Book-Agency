@@ -38,6 +38,7 @@
     "test:price_list": "node --experimental-strip-types tests/price_list_verification.ts",
     "test:syllabus": "node --experimental-strip-types tests/syllabus_school_sets_verification.ts",
     "test:rough_bill": "node --experimental-strip-types tests/rough_bill_and_sidebar_grouping_verification.ts",
+    "test:publisher_and_class": "node --experimental-strip-types tests/publisher_analytics_and_class_filter_verification.ts",
     "test:emulator": "node scripts/run_emulator_tests.js",
     "preview": "vite preview"
   },

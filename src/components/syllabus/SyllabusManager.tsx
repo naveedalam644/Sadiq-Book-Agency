@@ -451,7 +451,7 @@ export const SyllabusManager: React.FC = () => {
             {/* Step 3: Fast Class Selector Pills */}
             <div className="border-t border-slate-100 pt-3">
               <span className="text-xs font-bold text-slate-500 mb-2 block">
-                3. Class (NUR, KG, 1ST, 2ND, 3RD...):
+                3. Class (PLAY GROUP, NUR, KG, 1ST, 2ND, 3RD...):
               </span>
               <div className="flex items-center gap-1.5 flex-wrap">
                 {STANDARD_CLASSES.map((cls) => {

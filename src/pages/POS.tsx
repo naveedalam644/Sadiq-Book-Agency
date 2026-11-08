@@ -41,6 +41,7 @@ import { A4InvoiceModal } from '../components/pos/A4InvoiceModal';
 import { AdminOverrideModal } from '../components/pos/AdminOverrideModal';
 import { ProductHistoryModal } from '../components/inventory/ProductHistoryModal';
 import { SchoolSyllabusSetModal } from '../components/pos/SchoolSyllabusSetModal';
+import { STANDARD_CLASSES } from '../services/syllabusService';
 import type {
   CustomerDocument,
   CustomerType,
@@ -96,6 +97,7 @@ export const POS: React.FC = () => {
   // Book hierarchy filters
   const [selectedPublisher, setSelectedPublisher] = useState<string>('all');
   const [selectedSeries, setSelectedSeries] = useState<string>('all');
+  const [selectedClass, setSelectedClass] = useState<string>('all');
   const [publishersList, setPublishersList] = useState<PublisherDocument[]>([]);
   const [seriesList, setSeriesList] = useState<SeriesDocument[]>([]);
 
@@ -115,6 +117,8 @@ export const POS: React.FC = () => {
   selectedPublisherRef.current = selectedPublisher;
   const selectedSeriesRef = useRef(selectedSeries);
   selectedSeriesRef.current = selectedSeries;
+  const selectedClassRef = useRef(selectedClass);
+  selectedClassRef.current = selectedClass;
   const selectedNbClassificationRef = useRef(selectedNbClassification);
   selectedNbClassificationRef.current = selectedNbClassification;
   const selectedSheetCountRef = useRef(selectedSheetCount);
@@ -252,21 +256,24 @@ export const POS: React.FC = () => {
       serId = selectedSeriesRef.current,
       nbClass = selectedNbClassificationRef.current,
       nbSheets = selectedSheetCountRef.current,
-      nbSize = selectedNbSizeRef.current
+      nbSize = selectedNbSizeRef.current,
+      targetClass = selectedClassRef.current
     ) => {
       const clean = text.trim();
       const hasPub = pubId && pubId !== 'all';
       const hasSer = serId && serId !== 'all';
+      const hasClass = targetClass && targetClass !== 'all';
 
       // 1. Browsing with empty search text (< 2 characters)
       if (!clean || clean.length < 2) {
         if (overrideCategory === 'book') {
-          if (hasPub || hasSer) {
+          if (hasPub || hasSer || hasClass) {
             setIsSearching(true);
             try {
               const res = await getProductsByHierarchy(
                 hasPub ? pubId : undefined,
-                hasSer ? serId : undefined
+                hasSer ? serId : undefined,
+                hasClass ? targetClass : undefined
               );
               setSearchResults(res.products);
               setHasMore(res.hasMore);
@@ -316,6 +323,15 @@ export const POS: React.FC = () => {
             if (overrideCategory === 'book') {
               if (hasPub && exact.publisherId !== pubId) matches = false;
               if (hasSer && exact.seriesId !== serId) matches = false;
+              if (hasClass) {
+                const cls = targetClass.toLowerCase().trim();
+                const clsMatches =
+                  (exact.targetClass && exact.targetClass.toLowerCase().trim() === cls) ||
+                  (exact.className && exact.className.toLowerCase().trim() === cls) ||
+                  (exact.edition && exact.edition.toLowerCase().includes(cls)) ||
+                  (exact.title && exact.title.toLowerCase().includes(cls));
+                if (!clsMatches) matches = false;
+              }
             } else if (overrideCategory === 'notebook_register') {
               if (nbClass !== 'all' && exact.classification !== nbClass) matches = false;
               if (nbSheets !== 'all' && exact.notebookSheets !== nbSheets) matches = false;
@@ -342,6 +358,15 @@ export const POS: React.FC = () => {
           }
           if (hasSer) {
             filtered = filtered.filter((p) => p.seriesId === serId);
+          }
+          if (hasClass) {
+            const cls = targetClass.toLowerCase().trim();
+            filtered = filtered.filter((p) =>
+              (p.targetClass && p.targetClass.toLowerCase().trim() === cls) ||
+              (p.className && p.className.toLowerCase().trim() === cls) ||
+              (p.edition && p.edition.toLowerCase().includes(cls)) ||
+              (p.title && p.title.toLowerCase().includes(cls))
+            );
           }
         } else if (overrideCategory === 'notebook_register') {
           if (nbClass !== 'all') {
@@ -397,7 +422,8 @@ export const POS: React.FC = () => {
       selectedSeriesRef.current,
       selectedNbClassificationRef.current,
       selectedSheetCountRef.current,
-      selectedNbSizeRef.current
+      selectedNbSizeRef.current,
+      selectedClassRef.current
     );
   };
 
@@ -425,7 +451,8 @@ export const POS: React.FC = () => {
       'all',
       selectedNbClassificationRef.current,
       selectedSheetCountRef.current,
-      selectedNbSizeRef.current
+      selectedNbSizeRef.current,
+      selectedClassRef.current
     );
   };
 
@@ -439,7 +466,23 @@ export const POS: React.FC = () => {
       serId,
       selectedNbClassificationRef.current,
       selectedSheetCountRef.current,
-      selectedNbSizeRef.current
+      selectedNbSizeRef.current,
+      selectedClassRef.current
+    );
+  };
+
+  const handleClassFilterChange = (cls: string) => {
+    setSelectedClass(cls);
+    selectedClassRef.current = cls;
+    executeSearch(
+      searchTerm,
+      'book',
+      selectedPublisherRef.current,
+      selectedSeriesRef.current,
+      selectedNbClassificationRef.current,
+      selectedSheetCountRef.current,
+      selectedNbSizeRef.current,
+      cls
     );
   };
 
@@ -491,8 +534,10 @@ export const POS: React.FC = () => {
     try {
       const pubId = selectedPublisherRef.current;
       const serId = selectedSeriesRef.current;
+      const targetCls = selectedClassRef.current;
       const hasPub = pubId && pubId !== 'all';
       const hasSer = serId && serId !== 'all';
+      const hasClass = targetCls && targetCls !== 'all';
       const currentCat = filterCategoryRef.current;
       const nbClass = selectedNbClassificationRef.current;
       const nbSheets = selectedSheetCountRef.current;
@@ -504,6 +549,15 @@ export const POS: React.FC = () => {
         if (currentCat === 'book') {
           if (hasPub) filtered = filtered.filter((p) => p.publisherId === pubId);
           if (hasSer) filtered = filtered.filter((p) => p.seriesId === serId);
+          if (hasClass) {
+            const cls = targetCls.toLowerCase().trim();
+            filtered = filtered.filter((p) =>
+              (p.targetClass && p.targetClass.toLowerCase().trim() === cls) ||
+              (p.className && p.className.toLowerCase().trim() === cls) ||
+              (p.edition && p.edition.toLowerCase().includes(cls)) ||
+              (p.title && p.title.toLowerCase().includes(cls))
+            );
+          }
         } else if (currentCat === 'notebook_register') {
           if (nbClass !== 'all') filtered = filtered.filter((p) => p.classification === nbClass);
           if (nbSheets !== 'all') filtered = filtered.filter((p) => p.notebookSheets === nbSheets);
@@ -512,10 +566,11 @@ export const POS: React.FC = () => {
         setSearchResults((prev) => [...prev, ...filtered]);
         setHasMore(res.hasMore);
         setNextCursor(res.nextCursor);
-      } else if (currentCat === 'book' && (hasPub || hasSer)) {
+      } else if (currentCat === 'book' && (hasPub || hasSer || hasClass)) {
         const res = await getProductsByHierarchy(
           hasPub ? pubId : undefined,
           hasSer ? serId : undefined,
+          hasClass ? targetCls : undefined,
           nextCursor
         );
         setSearchResults((prev) => [...prev, ...res.products]);
@@ -799,7 +854,7 @@ export const POS: React.FC = () => {
                 }`}
               >
                 <BookOpen className="w-3.5 h-3.5 text-[#F5B51B]" />
-                <span>Books (Publisher & Series)</span>
+                <span>Books (Publisher, Series & Class)</span>
               </button>
 
               <button
@@ -830,8 +885,8 @@ export const POS: React.FC = () => {
 
             {/* 2. Sub-Filters based on Active Category */}
             {filterCategory === 'book' ? (
-              /* Books: Publisher -> Series Dropdowns */
-              <div className="grid grid-cols-2 gap-2">
+              /* Books: Publisher -> Series -> Class Dropdowns */
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 <div className="flex flex-col">
                   <select
                     value={selectedPublisher}
@@ -855,11 +910,26 @@ export const POS: React.FC = () => {
                     className="w-full text-xs font-semibold border border-slate-300 rounded-xl px-2.5 py-2 bg-slate-50 text-slate-800 focus:outline-none focus:ring-1 focus:ring-[#071F49] focus:bg-white transition disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <option value="all">
-                      {selectedPublisher === 'all' ? 'Select Publisher first' : 'All Series'}
+                      {selectedPublisher === 'all' ? 'All Series (Select Pub)' : 'All Series'}
                     </option>
                     {seriesList.map((ser) => (
                       <option key={ser.id} value={ser.id}>
                         {ser.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="flex flex-col">
+                  <select
+                    value={selectedClass}
+                    onChange={(e) => handleClassFilterChange(e.target.value)}
+                    className="w-full text-xs font-semibold border border-slate-300 rounded-xl px-2.5 py-2 bg-slate-50 text-slate-800 focus:outline-none focus:ring-1 focus:ring-[#071F49] focus:bg-white transition"
+                  >
+                    <option value="all">All Classes</option>
+                    {STANDARD_CLASSES.map((cls) => (
+                      <option key={cls} value={cls}>
+                        {cls}
                       </option>
                     ))}
                   </select>

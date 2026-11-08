@@ -24,6 +24,7 @@ export const SCHOOLS_COLLECTION = 'schools';
 export const SYLLABUS_SETS_COLLECTION = 'syllabusSets';
 
 export const STANDARD_CLASSES = [
+  'Play Group',
   'Nursery',
   'Prep / KG',
   'Class 1',

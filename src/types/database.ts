@@ -135,6 +135,8 @@ export interface ProductDocument {
   seriesName?: string; // Denormalized display title of the series
   authorOrPublisher?: string; // Maintained for backward compatibility
   edition?: string;
+  targetClass?: string; // Academic Class (e.g. "Play Group", "Nursery", "Prep / KG", "Class 1" ... "Class 10")
+  className?: string; // Alias for targetClass
   // Notebook & Register Dynamic Attributes
   notebookSize?: string; // e.g. "A4", "A5", "Foolscap"
   notebookSheets?: string; // e.g. "40", "80", "100", "200"

@@ -211,10 +211,24 @@ export const searchProductsByName = async (
 export const getProductsByHierarchy = async (
   publisherId?: string,
   seriesId?: string,
-  cursorDoc: QueryDocumentSnapshot<DocumentData> | null = null,
+  targetClassOrCursor?: string | QueryDocumentSnapshot<DocumentData> | null,
+  cursorDocArg: QueryDocumentSnapshot<DocumentData> | null = null,
   customDb: Firestore | null = db
 ): Promise<ProductSearchResponse> => {
-  if (!customDb || (!publisherId && !seriesId)) {
+  let targetClass: string | undefined;
+  let cursorDoc: QueryDocumentSnapshot<DocumentData> | null = cursorDocArg;
+
+  if (typeof targetClassOrCursor === 'string') {
+    targetClass = targetClassOrCursor;
+  } else if (targetClassOrCursor) {
+    cursorDoc = targetClassOrCursor;
+  }
+
+  const hasPub = publisherId && publisherId !== 'all';
+  const hasSer = seriesId && seriesId !== 'all';
+  const hasClass = targetClass && targetClass !== 'all';
+
+  if (!customDb || (!hasPub && !hasSer && !hasClass)) {
     return {
       products: [],
       hasMore: false,
@@ -226,26 +240,28 @@ export const getProductsByHierarchy = async (
   }
 
   const queryConstraints: any[] = [];
-  if (seriesId && seriesId !== 'all') {
+  if (hasSer) {
     queryConstraints.push(where('seriesId', '==', seriesId));
-  } else if (publisherId && publisherId !== 'all') {
+  } else if (hasPub) {
     queryConstraints.push(where('publisherId', '==', publisherId));
+  } else if (hasClass) {
+    queryConstraints.push(where('classification', '==', 'book'));
   }
 
   if (cursorDoc) {
     queryConstraints.push(startAfter(cursorDoc));
   }
 
-  queryConstraints.push(limit(25));
+  queryConstraints.push(limit(50));
 
   const q = query(collection(customDb, 'products'), ...queryConstraints);
   const snap = await getDocs(q);
 
   const docs = snap.docs;
-  const hasMore = docs.length === 25;
+  const hasMore = docs.length === 50;
   const nextCursor = hasMore ? docs[docs.length - 1] : null;
 
-  const products: ProductSearchResult[] = docs.map((docSnap) => {
+  let products: ProductSearchResult[] = docs.map((docSnap) => {
     const data = docSnap.data() as ProductDocument;
     return {
       ...data,
@@ -253,6 +269,17 @@ export const getProductsByHierarchy = async (
       publisherName: resolvePublisherSnapshot(data),
     };
   });
+
+  if (hasClass) {
+    const cls = targetClass!.toLowerCase().trim();
+    products = products.filter((p) => {
+      if (p.targetClass && p.targetClass.toLowerCase().trim() === cls) return true;
+      if (p.className && p.className.toLowerCase().trim() === cls) return true;
+      if (p.edition && p.edition.toLowerCase().includes(cls)) return true;
+      if (p.title && p.title.toLowerCase().includes(cls)) return true;
+      return false;
+    });
+  }
 
   return {
     products,

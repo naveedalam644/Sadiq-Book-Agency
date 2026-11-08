@@ -13,9 +13,6 @@ import {
   ShieldCheck,
   Building2,
   Clock,
-  Lock,
-  Unlock,
-  KeyRound,
   Tag,
   GraduationCap,
   FileText,
@@ -23,9 +20,6 @@ import {
   Trash2,
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
-import { useAdminLock } from '../../contexts/AdminLockContext';
-import { AdminSectionLockModal } from '../auth/AdminSectionLockModal';
-import { ChangeAdminPasswordModal } from '../auth/ChangeAdminPasswordModal';
 import { ClientHandoverCleanupModal } from '../maintenance/ClientHandoverCleanupModal';
 
 export interface SidebarProps {
@@ -42,18 +36,6 @@ interface NavItem {
 
 export const Sidebar: React.FC<SidebarProps> = ({ onNavigate, className = '' }) => {
   const { logout, currentUser } = useAuth();
-  const {
-    isLocked,
-    lockAll,
-    activeLockModal,
-    openLockModal,
-    closeLockModal,
-    isChangePasswordModalOpen,
-    openChangePasswordModal,
-    closeChangePasswordModal,
-    isSessionUnlocked,
-  } = useAdminLock();
-
   const location = useLocation();
   const navigate = useNavigate();
   const [isCleanupModalOpen, setIsCleanupModalOpen] = useState(false);
@@ -148,30 +130,23 @@ export const Sidebar: React.FC<SidebarProps> = ({ onNavigate, className = '' }) 
     },
   ];
 
-  const handleItemClick = (e: React.MouseEvent, item: NavItem) => {
-    const locked = isLocked(item.to);
-    if (locked) {
-      e.preventDefault();
-      openLockModal(item.to, item.name);
-    } else {
-      onNavigate?.();
-    }
+  const handleItemClick = () => {
+    onNavigate?.();
   };
 
   const renderNavItem = (item: NavItem) => {
     const Icon = item.icon;
     const isActive = location.pathname === item.to;
-    const locked = isLocked(item.to);
 
     if (item.enabled) {
       return (
         <NavLink
           key={item.name}
           to={item.to}
-          onClick={(e) => handleItemClick(e, item)}
+          onClick={handleItemClick}
           className={({ isActive: linkActive }) =>
             `flex items-center justify-between px-3.5 py-2.5 rounded-xl text-sm font-semibold transition-all duration-150 group ${
-              linkActive && !locked
+              linkActive
                 ? 'bg-[#F5B51B] text-[#071F49] shadow-lg shadow-[#F5B51B]/25 font-bold'
                 : 'text-slate-200 hover:bg-[#0A255B] hover:text-white'
             }`
@@ -180,29 +155,20 @@ export const Sidebar: React.FC<SidebarProps> = ({ onNavigate, className = '' }) 
           <div className="flex items-center gap-3 min-w-0">
             <Icon
               className={`w-4 h-4 shrink-0 transition-colors ${
-                isActive && !locked ? 'text-[#071F49]' : 'text-[#F5B51B] group-hover:text-white'
+                isActive ? 'text-[#071F49]' : 'text-[#F5B51B] group-hover:text-white'
               }`}
             />
             <span className="truncate">{item.name}</span>
           </div>
 
           <div className="flex items-center gap-1.5 shrink-0 ml-1">
-            {locked ? (
-              <span
-                title="Protected by Admin Password"
-                className="p-1 rounded-md bg-amber-500/20 text-amber-300 border border-amber-400/40"
-              >
-                <Lock className="w-3 h-3" />
-              </span>
-            ) : (
-              <ChevronRight
-                className={`w-3.5 h-3.5 transition-transform ${
-                  isActive
-                    ? 'text-[#071F49] opacity-100'
-                    : 'text-slate-400 opacity-60 group-hover:translate-x-0.5 group-hover:opacity-100'
-                }`}
-              />
-            )}
+            <ChevronRight
+              className={`w-3.5 h-3.5 transition-transform ${
+                isActive
+                  ? 'text-[#071F49] opacity-100'
+                  : 'text-slate-400 opacity-60 group-hover:translate-x-0.5 group-hover:opacity-100'
+              }`}
+            />
           </div>
         </NavLink>
       );
@@ -260,17 +226,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ onNavigate, className = '' }) 
           <div>
             <div className="px-3 pb-2 text-[10px] font-bold uppercase tracking-wider text-[#F5B51B]/80 flex items-center justify-between">
               <span>Main Operations</span>
-              <div className="flex items-center gap-1.5 text-[9px]">
-                {isSessionUnlocked ? (
-                  <span className="text-emerald-400 font-bold flex items-center gap-0.5">
-                    <Unlock className="w-3 h-3" /> Unlocked
-                  </span>
-                ) : (
-                  <span className="text-amber-400 font-bold flex items-center gap-0.5">
-                    <Lock className="w-3 h-3" /> Protected
-                  </span>
-                )}
-              </div>
             </div>
             <div className="space-y-1">
               {mainNavItems.map(renderNavItem)}
@@ -299,52 +254,32 @@ export const Sidebar: React.FC<SidebarProps> = ({ onNavigate, className = '' }) 
           </div>
         </div>
 
-        {/* Admin Profile & Lock Controls Box */}
+        {/* Admin Profile & Maintenance Controls Box */}
         <div className="p-3 border-t border-[#0E2E70] bg-[#04122C]/80 space-y-2">
-          {/* Quick Lock / Unlock Status Bar */}
-          <div className="flex items-center gap-1.5">
-            <button
-              type="button"
-              onClick={() => lockAll()}
-              className="flex-1 flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 text-[11px] font-bold border border-amber-500/30 transition-all cursor-pointer"
-              title="Lock all confidential sections immediately"
-            >
-              <Lock className="w-3 h-3" />
-              <span>Lock Sections</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => openChangePasswordModal()}
-              className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 transition-all cursor-pointer"
-              title="Change Admin Password / PIN"
-            >
-              <KeyRound className="w-3.5 h-3.5" />
-            </button>
+          {/* User Profile Card */}
+          <div className="flex items-center justify-between gap-2 p-2 rounded-xl bg-[#071F49]/80 border border-[#0E2E70]">
+            <div className="flex items-center gap-3 min-w-0 flex-1">
+              <div className="w-7 h-7 rounded-lg bg-[#F5B51B]/20 border border-[#F5B51B]/40 flex items-center justify-center text-[#F5B51B] shrink-0 font-bold">
+                <ShieldCheck className="w-3.5 h-3.5" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-xs font-bold text-white truncate">
+                  {currentUser?.displayName || 'Administrator'}
+                </p>
+                <p className="text-[10px] text-slate-300 truncate">
+                  {currentUser?.email || 'admin@sadiqbookagency.com'}
+                </p>
+              </div>
+            </div>
 
             <button
               type="button"
               onClick={() => setIsCleanupModalOpen(true)}
-              className="p-1.5 rounded-lg bg-slate-800 hover:bg-rose-950/60 text-slate-300 hover:text-rose-300 border border-slate-700 transition-all cursor-pointer"
+              className="p-1.5 rounded-lg bg-slate-800 hover:bg-rose-950/60 text-slate-300 hover:text-rose-300 border border-slate-700 transition-all cursor-pointer shrink-0"
               title="Clean All Testing Data for Client Handover"
             >
               <Trash2 className="w-3.5 h-3.5" />
             </button>
-          </div>
-
-          {/* User Profile Card */}
-          <div className="flex items-center gap-3 p-2 rounded-xl bg-[#071F49]/80 border border-[#0E2E70]">
-            <div className="w-7 h-7 rounded-lg bg-[#F5B51B]/20 border border-[#F5B51B]/40 flex items-center justify-center text-[#F5B51B] shrink-0 font-bold">
-              <ShieldCheck className="w-3.5 h-3.5" />
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="text-xs font-bold text-white truncate">
-                {currentUser?.displayName || 'Administrator'}
-              </p>
-              <p className="text-[10px] text-slate-300 truncate">
-                {currentUser?.email || 'admin@sadiqbookagency.com'}
-              </p>
-            </div>
           </div>
 
           {/* Sign Out Button */}
@@ -358,27 +293,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ onNavigate, className = '' }) 
           </button>
         </div>
       </aside>
-
-      {/* Password Unlock Modal (Opened when clicking any locked sidebar item) */}
-      {activeLockModal && (
-        <AdminSectionLockModal
-          isOpen={true}
-          onClose={closeLockModal}
-          targetPath={activeLockModal.path}
-          targetName={activeLockModal.name}
-          onSuccess={() => {
-            closeLockModal();
-            navigate(activeLockModal.path);
-            onNavigate?.();
-          }}
-        />
-      )}
-
-      {/* Change Password Modal */}
-      <ChangeAdminPasswordModal
-        isOpen={isChangePasswordModalOpen}
-        onClose={closeChangePasswordModal}
-      />
 
       {/* Client Handover Cleanup Modal */}
       <ClientHandoverCleanupModal

@@ -54,17 +54,11 @@ export const AdminLockProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   // Track if default PIN is currently in use
   const defaultPinNotice = adminPin === DEFAULT_ADMIN_PIN;
 
-  // 2. Session Unlock State (persisted in sessionStorage for page refreshes during same session)
-  const [isSessionUnlocked, setIsSessionUnlocked] = useState<boolean>(() => {
-    try {
-      return sessionStorage.getItem(SESSION_UNLOCKED_KEY) === 'true';
-    } catch {
-      return false;
-    }
-  });
+  // 2. Session Unlock State (Always unlocked by default since sidebar password is removed)
+  const [isSessionUnlocked, setIsSessionUnlocked] = useState<boolean>(true);
 
   // 3. Individually Unlocked Paths (in-memory set)
-  const [unlockedPaths, setUnlockedPaths] = useState<Set<string>>(new Set());
+  const [, setUnlockedPaths] = useState<Set<string>>(new Set());
 
   // 4. Modal state for navigation intercept
   const [activeLockModal, setActiveLockModal] = useState<{ path: string; name: string } | null>(null);
@@ -73,37 +67,18 @@ export const AdminLockProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   // Sync session state to sessionStorage
   useEffect(() => {
     try {
-      if (isSessionUnlocked) {
-        sessionStorage.setItem(SESSION_UNLOCKED_KEY, 'true');
-      } else {
-        sessionStorage.removeItem(SESSION_UNLOCKED_KEY);
-      }
+      sessionStorage.setItem(SESSION_UNLOCKED_KEY, 'true');
     } catch {
       // Ignore storage errors
     }
-  }, [isSessionUnlocked]);
+  }, []);
 
-  // Check if a given route path is currently locked
+  // Check if a given route path is currently locked (Disabled by user request - all routes open)
   const isLocked = useCallback(
-    (path: string): boolean => {
-      // If the whole session is unlocked, nothing is locked
-      if (isSessionUnlocked) return false;
-
-      // Normalize path (remove trailing slash)
-      const cleanPath = path === '/' ? '/' : path.replace(/\/$/, '');
-
-      // If this specific path has been individually unlocked
-      if (unlockedPaths.has(cleanPath)) return false;
-
-      // Check if this path is in protected paths list
-      const isProtected = PROTECTED_PATHS.some((p) => {
-        if (p === '/') return cleanPath === '/';
-        return cleanPath === p || cleanPath.startsWith(`${p}/`);
-      });
-
-      return isProtected;
+    (_path: string): boolean => {
+      return false;
     },
-    [isSessionUnlocked, unlockedPaths]
+    []
   );
 
   // Attempt to unlock a section with PIN
