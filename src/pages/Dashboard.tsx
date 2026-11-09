@@ -4,35 +4,21 @@ import {
   BookOpen,
   Receipt,
   ArrowRight,
-  Sparkles,
   AlertTriangle,
   Building2,
   Package,
   Coins,
   Plus,
   CheckCircle2,
-  Eye,
-  Calendar,
-  Clock,
-  Trash2,
+  ShoppingCart,
 } from 'lucide-react';
-import { WhatsAppIcon } from '../components/common/WhatsAppIcon';
 import { useAuth } from '../hooks/useAuth';
 import { StatCard } from '../components/common/StatCard';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '../components/common/Card';
-import { Badge } from '../components/common/Badge';
-import { AlertBanner } from '../components/feedback/AlertBanner';
-import { EmptyState } from '../components/feedback/EmptyState';
-import { PurchaseDetailModal } from '../components/purchases/PurchaseDetailModal';
 import { ProductDetailModal } from '../components/inventory/ProductDetailModal';
-import { ClientHandoverCleanupModal } from '../components/maintenance/ClientHandoverCleanupModal';
 import { fetchDashboardData, type DashboardData } from '../services/dashboardService';
-import { getOverdueReceivablesSummary, type OverdueReceivablesSummary } from '../services/dueDateService';
-import type { PurchaseDocument, ProductDocument, CustomerDocument } from '../types/database';
+import type { ProductDocument } from '../types/database';
 import { getGreetingByTime, formatCurrency, formatNumber } from '../utils/formatters';
-import { WhatsAppMessageModal } from '../components/common/WhatsAppMessageModal';
-import { buildOutstandingBalanceWhatsAppMessage } from '../utils/whatsappTemplates';
-import { getCustomerById } from '../services/customerService';
 
 export const Dashboard: React.FC = () => {
   const { currentUser } = useAuth();
@@ -53,27 +39,7 @@ export const Dashboard: React.FC = () => {
     isLoading: true,
   });
 
-  const [viewingPurchase, setViewingPurchase] = useState<PurchaseDocument | null>(null);
   const [viewingProduct, setViewingProduct] = useState<ProductDocument | null>(null);
-  const [isCleanupModalOpen, setIsCleanupModalOpen] = useState(false);
-  const [overdueSummary, setOverdueSummary] = useState<OverdueReceivablesSummary | null>(null);
-  const [loadingOverdue, setLoadingOverdue] = useState(true);
-  const [selectedOverdueInv, setSelectedOverdueInv] = useState<OverdueReceivablesSummary['overdueInvoices'][0] | null>(null);
-  const [overdueCustomer, setOverdueCustomer] = useState<CustomerDocument | null>(null);
-
-  const handleWhatsAppReminder = async (inv: OverdueReceivablesSummary['overdueInvoices'][0]) => {
-    setSelectedOverdueInv(inv);
-    if (inv.customerId) {
-      try {
-        const cust = await getCustomerById(inv.customerId);
-        setOverdueCustomer(cust);
-      } catch {
-        setOverdueCustomer(null);
-      }
-    } else {
-      setOverdueCustomer(null);
-    }
-  };
 
   const loadDashboardData = () => {
     fetchDashboardData()
@@ -89,23 +55,13 @@ export const Dashboard: React.FC = () => {
         console.error('Failed to load dashboard data:', err);
         setDashboardData((prev) => ({ ...prev, isLoading: false }));
       });
-
-    getOverdueReceivablesSummary()
-      .then((data) => {
-        setOverdueSummary(data);
-        setLoadingOverdue(false);
-      })
-      .catch((err) => {
-        console.error('Failed to load overdue summary:', err);
-        setLoadingOverdue(false);
-      });
   };
 
   useEffect(() => {
     loadDashboardData();
   }, []);
 
-  const { summary, recentPurchases, lowStockProducts, isLoading } = dashboardData;
+  const { summary, lowStockProducts, isLoading } = dashboardData;
 
   return (
     <div className="space-y-6">
@@ -114,9 +70,9 @@ export const Dashboard: React.FC = () => {
         <div className="absolute -right-16 -top-16 w-64 h-64 rounded-full bg-[#F5B51B]/10 blur-3xl pointer-events-none" />
         <div className="absolute right-32 -bottom-20 w-48 h-48 rounded-full bg-[#1D53C2]/20 blur-2xl pointer-events-none" />
 
-        <div className="relative p-6 sm:p-8 flex flex-col md:flex-row md:items-center justify-between gap-6">
-          <div className="flex items-center gap-4 sm:gap-5">
-            <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-white p-2 shadow-lg ring-4 ring-[#F5B51B]/30 shrink-0 flex items-center justify-center">
+        <div className="relative p-5 sm:p-7 md:p-8 flex flex-col md:flex-row md:items-center justify-between gap-5 md:gap-6">
+          <div className="flex items-center gap-3.5 sm:gap-5">
+            <div className="w-14 h-14 sm:w-20 sm:h-20 rounded-2xl bg-white p-1.5 sm:p-2 shadow-lg ring-4 ring-[#F5B51B]/30 shrink-0 flex items-center justify-center">
               <img
                 src="/images/sadiq-book-agency-logo.png"
                 alt="Sadiq Book Agency Logo"
@@ -125,30 +81,32 @@ export const Dashboard: React.FC = () => {
             </div>
 
             <div className="min-w-0">
-              <div className="flex items-center gap-2 flex-wrap mb-1">
-                <span className="text-xs sm:text-sm font-semibold text-[#F5B51B] uppercase tracking-wider">
-                  {greeting}, {currentUser?.displayName || 'Store Administrator'}
-                </span>
-                <span className="inline-flex items-center gap-1 text-[11px] font-bold bg-[#F5B51B] text-[#071F49] px-2 py-0.5 rounded-full">
-                  <Sparkles className="w-3 h-3 text-[#071F49]" />
-                  Live System
-                </span>
-              </div>
+              <span className="text-xs sm:text-sm font-semibold text-[#F5B51B] uppercase tracking-wider block mb-0.5">
+                {greeting}, {currentUser?.displayName || 'Store Administrator'}
+              </span>
 
               <h1 className="text-xl sm:text-3xl font-black text-white tracking-tight">
                 SADIQ BOOK AGENCY
               </h1>
-              <p className="text-xs sm:text-sm text-slate-300 font-medium mt-0.5">
+              <p className="text-xs sm:text-sm text-slate-300 font-medium mt-0.5 line-clamp-1 sm:line-clamp-none">
                 Books • Notebooks • Registers • Stationery | Complete Inventory & Wholesale Accounting
               </p>
             </div>
           </div>
 
           {/* Quick Action Shortcuts */}
-          <div className="flex items-center gap-2.5 shrink-0 flex-wrap">
+          <div className="flex items-center gap-2 sm:gap-2.5 shrink-0 flex-wrap">
+            <Link
+              to="/pos"
+              className="inline-flex items-center gap-2 px-3.5 py-2.5 rounded-xl text-xs font-bold bg-[#F5B51B] text-[#071F49] hover:bg-[#F8CE4E] transition shadow-md shadow-[#F5B51B]/20 active:scale-95"
+            >
+              <ShoppingCart className="w-4 h-4 text-[#071F49]" />
+              <span>Create Bill (POS)</span>
+            </Link>
+
             <Link
               to="/inventory"
-              className="inline-flex items-center gap-2 px-3.5 py-2.5 rounded-xl text-xs font-bold bg-[#F5B51B] text-[#071F49] hover:bg-[#F8CE4E] transition shadow-md shadow-[#F5B51B]/20 active:scale-95"
+              className="inline-flex items-center gap-2 px-3.5 py-2.5 rounded-xl text-xs font-bold bg-white text-[#071F49] hover:bg-slate-100 transition shadow-md active:scale-95"
             >
               <Package className="w-4 h-4 text-[#071F49]" />
               <span>Catalog & Items</span>
@@ -156,48 +114,17 @@ export const Dashboard: React.FC = () => {
 
             <Link
               to="/purchases"
-              className="inline-flex items-center gap-2 px-3.5 py-2.5 rounded-xl text-xs font-bold bg-white text-[#071F49] hover:bg-slate-100 transition shadow-md active:scale-95"
+              className="inline-flex items-center gap-2 px-3.5 py-2.5 rounded-xl text-xs font-bold bg-[#04122C]/70 hover:bg-[#04122C] text-slate-200 hover:text-white border border-[#0E2E70] transition shadow-md active:scale-95"
             >
-              <Plus className="w-4 h-4 text-[#071F49]" />
+              <Plus className="w-4 h-4 text-[#F5B51B]" />
               <span>New Purchase</span>
             </Link>
-
-            <button
-              type="button"
-              onClick={() => setIsCleanupModalOpen(true)}
-              className="inline-flex items-center gap-2 px-3 py-2.5 rounded-xl text-xs font-bold bg-[#04122C]/70 hover:bg-[#04122C] text-rose-200 hover:text-white border border-[#0E2E70] transition shadow-md active:scale-95 cursor-pointer"
-              title="Clean all dummy testing data for client handover"
-            >
-              <Trash2 className="w-4 h-4 text-rose-400" />
-              <span>Clean Test Data</span>
-            </button>
           </div>
         </div>
       </div>
 
-      {/* Low-Stock Alert Warning Banner if any items triggered */}
-      {summary.lowStockCount > 0 && (
-        <AlertBanner
-          variant="warning"
-          title={`Low-Stock Reorder Notice: ${summary.lowStockCount} items need attention`}
-          message={
-            <div className="flex items-center justify-between flex-wrap gap-2">
-              <span>
-                One or more products have reached or fallen below their minimum stock threshold. Review the low-stock inventory list below or initiate a purchase order.
-              </span>
-              <Link
-                to="/inventory"
-                className="underline font-bold text-amber-900 hover:text-amber-950 text-xs ml-auto"
-              >
-                View Low-Stock Catalog →
-              </Link>
-            </div>
-          }
-        />
-      )}
-
-      {/* 2. FOUR CORE STATISTIC CARDS (LIVE FIRESTORE DATA) */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* 2. THREE CORE STATISTIC CARDS (LIVE CATALOG & ASSET SUMMARY) */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         <StatCard
           title="Active Products Catalog"
           value={isLoading ? '...' : formatNumber(summary.totalProducts)}
@@ -227,232 +154,115 @@ export const Dashboard: React.FC = () => {
           badgeText="PKR Cost"
           badgeVariant="success"
         />
-
-        <StatCard
-          title="Registered Suppliers"
-          value={isLoading ? '...' : formatNumber(summary.totalSuppliers)}
-          subtitle="Publishers & Paper Mills"
-          icon={<Building2 className="w-5 h-5 text-[#071F49]" />}
-          iconBgColor="bg-blue-50 text-blue-700"
-          badgeText="Vendors"
-          badgeVariant="info"
-        />
       </div>
 
-      {/* 2b. CREDIT RECEIVABLES & DUE DATES HEALTH (MODULE 6.6 & DUE DATES SYSTEM) */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard
-          title="Total Overdue Receivables"
-          value={loadingOverdue ? '...' : formatCurrency(overdueSummary?.totalOverdueAmount || 0)}
-          subtitle={`${overdueSummary?.overdueInvoices.length || 0} overdue invoices`}
-          icon={<AlertTriangle className="w-5 h-5 text-rose-600" />}
-          iconBgColor="bg-rose-50 text-rose-700"
-          badgeText={(overdueSummary?.totalOverdueAmount || 0) > 0 ? 'Overdue Action' : 'All Settled'}
-          badgeVariant={(overdueSummary?.totalOverdueAmount || 0) > 0 ? 'warning' : 'success'}
-        />
-
-        <StatCard
-          title="Bills Due Today"
-          value={loadingOverdue ? '...' : formatCurrency(overdueSummary?.totalDueTodayAmount || 0)}
-          subtitle={`${overdueSummary?.dueTodayCount || 0} invoices due today`}
-          icon={<Clock className="w-5 h-5 text-amber-600" />}
-          iconBgColor="bg-amber-50 text-amber-700"
-          badgeText="Due Today"
-          badgeVariant="warning"
-        />
-
-        <StatCard
-          title="Due within 7 Days"
-          value={loadingOverdue ? '...' : formatCurrency(overdueSummary?.totalDueSoonAmount || 0)}
-          subtitle={`${overdueSummary?.dueSoonCount || 0} upcoming settlements`}
-          icon={<Calendar className="w-5 h-5 text-indigo-700" />}
-          iconBgColor="bg-indigo-50 text-indigo-700"
-          badgeText="Next 7 Days"
-          badgeVariant="info"
-        />
-
-        <StatCard
-          title="Total Outstanding Khata"
-          value={loadingOverdue ? '...' : formatCurrency(overdueSummary?.totalOutstandingCredit || 0)}
-          subtitle="Customer ledger receivables balance"
-          icon={<Receipt className="w-5 h-5 text-[#071F49]" />}
-          iconBgColor="bg-[#071F49]/10 text-[#071F49]"
-          badgeText="Total Khata"
-          badgeVariant="brand"
-        />
-      </div>
-
-      {/* Overdue Invoices Quick Watch (if any overdue debt exists) */}
-      {overdueSummary && overdueSummary.overdueInvoices.length > 0 && (
-        <Card className="border border-rose-200 bg-rose-50/20 shadow-xs rounded-2xl overflow-hidden">
-          <CardHeader className="bg-rose-50/60 border-b border-rose-100 py-3.5">
-            <div className="flex items-center justify-between w-full">
-              <div className="flex items-center gap-2">
-                <AlertTriangle className="w-4 h-4 text-rose-600" />
-                <CardTitle className="text-sm font-bold text-rose-950">
-                  Critical Overdue Invoices Requiring Follow-Up ({overdueSummary.overdueInvoices.length})
-                </CardTitle>
-              </div>
-              <Link
-                to="/sales"
-                className="text-xs font-bold text-rose-800 hover:text-rose-950 inline-flex items-center gap-1"
-              >
-                <span>Sales Invoices</span>
-                <ArrowRight className="w-3.5 h-3.5" />
-              </Link>
-            </div>
-          </CardHeader>
-          <CardContent className="p-0 overflow-x-auto">
-            <table className="w-full text-xs text-left">
-              <thead className="bg-slate-50 text-slate-600 font-bold border-b border-slate-200">
-                <tr>
-                  <th className="py-2.5 px-4">Invoice #</th>
-                  <th className="py-2.5 px-4">Customer</th>
-                  <th className="py-2.5 px-4">Bill Date</th>
-                  <th className="py-2.5 px-4 text-center">Due Date</th>
-                  <th className="py-2.5 px-4 text-center">Overdue</th>
-                  <th className="py-2.5 px-4 text-right">Remaining Debt</th>
-                  <th className="py-2.5 px-4 text-center">Action</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-rose-100/60">
-                {overdueSummary.overdueInvoices.slice(0, 5).map((inv) => (
-                  <tr key={inv.saleId} className="hover:bg-rose-50/40 transition">
-                    <td className="py-2.5 px-4 font-mono font-bold text-slate-900">{inv.invoiceNo}</td>
-                    <td className="py-2.5 px-4 font-semibold text-slate-800">{inv.customerName}</td>
-                    <td className="py-2.5 px-4 text-slate-500">{inv.saleDate.split('T')[0]}</td>
-                    <td className="py-2.5 px-4 text-center font-mono text-slate-700">{inv.dueDate}</td>
-                    <td className="py-2.5 px-4 text-center">
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800 border border-rose-200">
-                        {inv.daysOverdue} days overdue
-                      </span>
-                    </td>
-                    <td className="py-2.5 px-4 text-right font-mono font-black text-rose-700">
-                      {formatCurrency(inv.remainingBalance)}
-                    </td>
-                    <td className="py-2.5 px-4 text-center whitespace-nowrap">
-                      <button
-                        type="button"
-                        onClick={() => handleWhatsAppReminder(inv)}
-                        className="px-2 py-1 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 hover:text-emerald-800 rounded-lg transition border border-emerald-200 inline-flex items-center gap-1 shadow-2xs font-semibold text-[11px]"
-                        title="Send WhatsApp Payment Reminder"
-                      >
-                        <WhatsAppIcon className="w-3.5 h-3.5" />
-                        <span>Remind</span>
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* 3. RECENT PURCHASES & LOW-STOCK ALERTS SECTIONS */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Recent Purchases Section (2 cols) */}
-        <Card className="lg:col-span-2 flex flex-col border border-slate-200/90 shadow-sm rounded-2xl">
-          <CardHeader>
-            <div className="flex items-center justify-between w-full">
-              <div className="flex items-center gap-2.5">
-                <div className="p-2 rounded-xl bg-[#071F49]/10 text-[#071F49]">
+      {/* 3. PRIMARY OPERATIONS & RESTOCK SECTION: BILLING & LOW-STOCK */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        {/* Billing & Counter POS Register (Primary Operations Launchpad) */}
+        <Card className="lg:col-span-7 flex flex-col border border-slate-200/90 shadow-sm rounded-2xl bg-gradient-to-br from-white via-white to-amber-50/20">
+          <CardHeader className="border-b border-slate-100 pb-3.5">
+            <div className="flex items-center justify-between w-full flex-wrap gap-2">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 rounded-xl bg-[#071F49] text-[#F5B51B] shadow-xs">
                   <Receipt className="w-5 h-5" />
                 </div>
                 <div>
-                  <CardTitle className="text-base font-bold text-[#071F49]">
-                    Recent Stock Intake & Purchases
+                  <CardTitle className="text-base font-black text-[#071F49]">
+                    Billing & Counter POS Register
                   </CardTitle>
-                  <CardDescription>
-                    Latest supplier shipments and inventory additions
+                  <CardDescription className="text-xs text-slate-500">
+                    Fast counter sales, customer billing & receipt printing
+                  </CardDescription>
+                </div>
+              </div>
+
+              <span className="text-[11px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 rounded-full">
+                Ready for Sales
+              </span>
+            </div>
+          </CardHeader>
+          <CardContent className="flex-1 flex flex-col justify-between p-4 sm:p-5 space-y-4">
+            <div className="space-y-3">
+              <p className="text-xs text-slate-600 leading-relaxed">
+                Create new sales invoices, search books and notebooks by barcode/SKU, apply counter discounts, and print professional A4/Thermal bills or share via WhatsApp.
+              </p>
+
+              {/* Main POS Launch CTA Button */}
+              <Link
+                to="/pos"
+                className="w-full flex items-center justify-center gap-2.5 py-3 px-5 rounded-xl font-black text-sm text-[#071F49] bg-[#F5B51B] hover:bg-[#F8CE4E] shadow-md shadow-[#F5B51B]/25 hover:shadow-lg transition-all active:scale-[0.99]"
+              >
+                <ShoppingCart className="w-5 h-5 text-[#071F49]" />
+                <span>Open POS Register / Create Bill &rarr;</span>
+              </Link>
+            </div>
+
+            {/* Quick Operational Shortcuts */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-2 border-t border-slate-100">
+              <Link
+                to="/pos"
+                className="p-2.5 rounded-xl bg-slate-50 hover:bg-[#071F49]/5 border border-slate-200/80 transition flex flex-col justify-between group"
+              >
+                <span className="text-[11px] font-bold text-slate-800 group-hover:text-[#071F49] block">
+                  Counter Sale
+                </span>
+                <span className="text-[10px] text-slate-500 mt-0.5">
+                  Cash / Customer Billing
+                </span>
+              </Link>
+
+              <Link
+                to="/rough-bill"
+                className="p-2.5 rounded-xl bg-slate-50 hover:bg-[#071F49]/5 border border-slate-200/80 transition flex flex-col justify-between group"
+              >
+                <span className="text-[11px] font-bold text-slate-800 group-hover:text-[#071F49] block">
+                  Rough Bill
+                </span>
+                <span className="text-[10px] text-slate-500 mt-0.5">
+                  Order / Estimate Draft
+                </span>
+              </Link>
+
+              <Link
+                to="/sales"
+                className="p-2.5 rounded-xl bg-slate-50 hover:bg-[#071F49]/5 border border-slate-200/80 transition flex flex-col justify-between group"
+              >
+                <span className="text-[11px] font-bold text-slate-800 group-hover:text-[#071F49] block">
+                  Sales Invoices
+                </span>
+                <span className="text-[10px] text-slate-500 mt-0.5">
+                  History & Reprints
+                </span>
+              </Link>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Low-Stock Reorder List Card */}
+        <Card className="lg:col-span-5 flex flex-col border border-slate-200/90 shadow-sm rounded-2xl">
+          <CardHeader className="border-b border-slate-100 pb-3">
+            <div className="flex items-center justify-between w-full">
+              <div className="flex items-center gap-2">
+                <div className="p-2 rounded-xl bg-amber-50 text-amber-700">
+                  <AlertTriangle className="w-4 h-4" />
+                </div>
+                <div>
+                  <CardTitle className="text-sm font-bold text-[#071F49]">
+                    Low-Stock Reorder List
+                  </CardTitle>
+                  <CardDescription className="text-xs text-slate-500">
+                    Items near or below minimum count
                   </CardDescription>
                 </div>
               </div>
 
               <Link
-                to="/purchases"
-                className="text-xs font-bold text-[#071F49] hover:text-[#153F99] inline-flex items-center gap-1"
+                to="/inventory"
+                className="text-xs font-bold text-amber-800 hover:text-amber-950 inline-flex items-center gap-1"
               >
-                <span>All Purchases</span>
+                <span>Stock</span>
                 <ArrowRight className="w-3.5 h-3.5" />
               </Link>
-            </div>
-          </CardHeader>
-          <CardContent className="flex-1 flex flex-col pt-2">
-            {recentPurchases.length === 0 ? (
-              <EmptyState
-                icon={<Receipt className="w-8 h-8 text-[#071F49]" />}
-                title="No Purchases Recorded Yet"
-                description="Record your first supplier stock intake to populate purchase orders, update inventory quantities, and log immutable movement records."
-              />
-            ) : (
-              <div className="divide-y divide-slate-100 overflow-x-auto">
-                <table className="w-full text-xs text-left">
-                  <thead className="bg-slate-50 text-slate-500 uppercase font-semibold">
-                    <tr>
-                      <th className="px-3.5 py-2">Invoice #</th>
-                      <th className="px-3.5 py-2">Supplier</th>
-                      <th className="px-3.5 py-2 text-center">Items</th>
-                      <th className="px-3.5 py-2 text-right">Grand Total</th>
-                      <th className="px-3.5 py-2 text-center">Payment</th>
-                      <th className="px-3.5 py-2 text-right">Action</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {recentPurchases.map((pur) => (
-                      <tr key={pur.id} className="hover:bg-slate-50/60">
-                        <td className="px-3.5 py-3 font-mono font-bold text-[#071F49]">
-                          {pur.purchaseInvoiceNo}
-                        </td>
-                        <td className="px-3.5 py-3 font-medium text-slate-800 truncate max-w-[150px]">
-                          {pur.supplierName}
-                        </td>
-                        <td className="px-3.5 py-3 text-center text-slate-600">
-                          {pur.items.length} titles
-                        </td>
-                        <td className="px-3.5 py-3 text-right font-mono font-bold text-slate-900">
-                          {formatCurrency(pur.grandTotal)}
-                        </td>
-                        <td className="px-3.5 py-3 text-center">
-                          <Badge
-                            variant={pur.paymentMethod === 'cash' ? 'success' : 'warning'}
-                            size="sm"
-                          >
-                            {pur.paymentMethod.toUpperCase()}
-                          </Badge>
-                        </td>
-                        <td className="px-3.5 py-3 text-right">
-                          <button
-                            type="button"
-                            onClick={() => setViewingPurchase(pur)}
-                            className="p-1 text-slate-400 hover:text-[#071F49] hover:bg-slate-100 rounded transition"
-                            title="View Invoice"
-                          >
-                            <Eye className="w-4 h-4" />
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Low-Stock Alert Card (1 col) */}
-        <Card className="lg:col-span-1 flex flex-col border border-slate-200/90 shadow-sm rounded-2xl">
-          <CardHeader>
-            <div className="flex items-center gap-2">
-              <div className="p-2 rounded-xl bg-amber-50 text-amber-700">
-                <AlertTriangle className="w-4 h-4" />
-              </div>
-              <div>
-                <CardTitle className="text-sm font-bold text-[#071F49]">
-                  Low-Stock Reorder List
-                </CardTitle>
-                <CardDescription>Items near or below minimum count</CardDescription>
-              </div>
             </div>
           </CardHeader>
           <CardContent className="flex-1 flex flex-col pt-2">
@@ -495,8 +305,8 @@ export const Dashboard: React.FC = () => {
         </Card>
       </div>
 
-      {/* 4. QUICK SHORTCUTS & SYSTEM HEALTH */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      {/* 4. QUICK SHORTCUTS & SYSTEM NAVIGATION */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
         <Link
           to="/inventory"
           className="flex items-center justify-between p-4 rounded-2xl bg-white border border-slate-200/90 hover:border-[#F5B51B] hover:shadow-md transition group"
@@ -552,47 +362,11 @@ export const Dashboard: React.FC = () => {
         </Link>
       </div>
 
-      {/* Modals for viewing details directly from dashboard */}
-      <PurchaseDetailModal
-        isOpen={Boolean(viewingPurchase)}
-        onClose={() => setViewingPurchase(null)}
-        purchase={viewingPurchase}
-      />
-
+      {/* Product Detail Modal for viewing details directly from dashboard */}
       <ProductDetailModal
         isOpen={Boolean(viewingProduct)}
         onClose={() => setViewingProduct(null)}
         product={viewingProduct}
-      />
-
-      {/* WhatsApp Overdue Payment Reminder Modal */}
-      {selectedOverdueInv && (
-        <WhatsAppMessageModal
-          isOpen={Boolean(selectedOverdueInv)}
-          onClose={() => {
-            setSelectedOverdueInv(null);
-            setOverdueCustomer(null);
-          }}
-          initialCustomerName={selectedOverdueInv.customerName || overdueCustomer?.name || 'Customer'}
-          initialPhone={overdueCustomer?.phone || ''}
-          customerId={selectedOverdueInv.customerId}
-          messageType="payment_reminder"
-          relatedInvoiceNo={selectedOverdueInv.invoiceNo}
-          defaultMessageText={buildOutstandingBalanceWhatsAppMessage({
-            customerName: selectedOverdueInv.customerName || overdueCustomer?.name || 'Customer',
-            currentBalance: selectedOverdueInv.remainingBalance,
-            dueDate: selectedOverdueInv.dueDate,
-          })}
-        />
-      )}
-
-      {/* Client Handover Cleanup Modal */}
-      <ClientHandoverCleanupModal
-        isOpen={isCleanupModalOpen}
-        onClose={() => setIsCleanupModalOpen(false)}
-        onCompleted={() => {
-          loadDashboardData();
-        }}
       />
     </div>
   );

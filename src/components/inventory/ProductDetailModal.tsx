@@ -43,9 +43,6 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
 
   const isLowStock = product.currentStock <= product.lowStockThreshold;
   const valuation = batchValuation > 0 ? batchValuation : product.currentStock * product.costPrice;
-  const publisherDiscount = typeof product.publisherDiscountPercent === 'number'
-    ? product.publisherDiscountPercent
-    : (product.retailPrice > 0 ? Math.max(0, Math.round(((product.retailPrice - product.costPrice) / product.retailPrice) * 1000) / 10) : 0);
   const retailMargin = product.retailPrice - product.costPrice;
   const retailMarginPercent = product.costPrice > 0 ? ((retailMargin / product.costPrice) * 100).toFixed(1) : '0';
 
@@ -172,23 +169,15 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
         <div className="p-4 bg-slate-50 rounded-xl border border-slate-200">
           <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-3 flex items-center gap-1.5">
             <TrendingUp className="w-4 h-4 text-[#071F49]" />
-            Pricing & Publisher Cost Model
+            Pricing & Valuation
           </h4>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
             <div>
               <span className="text-slate-500 block">Original Price / MRP:</span>
               <span className="text-base font-bold text-slate-900 font-mono mt-0.5 block">
                 {formatCurrency(product.retailPrice)}
               </span>
               <span className="text-[11px] text-slate-500">Catalog / Counter rate</span>
-            </div>
-
-            <div>
-              <span className="text-slate-500 block">Publisher Discount:</span>
-              <span className="text-base font-bold text-emerald-700 font-mono mt-0.5 block">
-                {publisherDiscount}% Off
-              </span>
-              <span className="text-[11px] text-slate-500">Product-level term</span>
             </div>
 
             <div>
@@ -303,7 +292,6 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                     <th className="px-2.5 py-1.5">Invoice / Batch</th>
                     <th className="px-2.5 py-1.5 text-center">Remaining / Intake</th>
                     <th className="px-2.5 py-1.5 text-right">MRP</th>
-                    <th className="px-2.5 py-1.5 text-right">Pub Disc %</th>
                     <th className="px-2.5 py-1.5 text-right">Unit Cost</th>
                     <th className="px-2.5 py-1.5 text-right">Valuation</th>
                   </tr>
@@ -322,9 +310,6 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                       </td>
                       <td className="px-2.5 py-1.5 text-right font-mono text-slate-600">
                         {batch.mrp > 0 ? formatCurrency(batch.mrp) : '—'}
-                      </td>
-                      <td className="px-2.5 py-1.5 text-right font-mono text-slate-600">
-                        {batch.publisherDiscountPercent > 0 ? `${batch.publisherDiscountPercent}%` : '—'}
                       </td>
                       <td className="px-2.5 py-1.5 text-right font-mono text-slate-700 font-semibold">
                         {formatCurrency(batch.unitCost)}

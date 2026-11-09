@@ -31,8 +31,9 @@ export const Login: React.FC = () => {
   const businessName =
     import.meta.env.VITE_BUSINESS_NAME || 'Sadiq Book Agency';
 
-  // Target destination after successful login
-  const from = (location.state as any)?.from?.pathname || '/';
+  // Target destination after successful login: default directly to /pos so POS & Add Product are immediately active without double-prompting
+  const rawFrom = (location.state as any)?.from?.pathname;
+  const from = rawFrom && rawFrom !== '/' ? rawFrom : '/pos';
 
   useEffect(() => {
     if (isAuthenticated) {

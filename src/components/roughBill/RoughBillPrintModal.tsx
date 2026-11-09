@@ -42,7 +42,7 @@ export const RoughBillPrintModal: React.FC<RoughBillPrintModalProps> = ({
       `*ITEMS:*`,
       ...bill.items.map(
         (i, idx) =>
-          `${idx + 1}. ${i.title} (${i.publisherName || 'SBA'})\n   Qty: ${i.quantity} x Rs. ${i.unitPrice}${i.discountPercent ? ` (-${i.discountPercent}%)` : ''} = *Rs. ${i.lineTotal}*`
+          `${idx + 1}. ${i.title} (${i.publisherName || 'SBA'})\n   Qty: ${i.quantity} x Rs. ${i.unitPrice} = *Rs. ${i.lineTotal}*`
       ),
       `--------------------------------`,
       `*Total Items:* ${bill.items.reduce((acc, i) => acc + i.quantity, 0)}`,
@@ -121,9 +121,8 @@ export const RoughBillPrintModal: React.FC<RoughBillPrintModalProps> = ({
                 <th className="p-2 text-center w-8">#</th>
                 <th className="p-2">Item Description</th>
                 <th className="p-2 text-center w-16">Qty</th>
-                <th className="p-2 text-right w-20">Rate</th>
-                {bill.totalDiscount > 0 && <th className="p-2 text-center w-16">Disc %</th>}
-                <th className="p-2 text-right w-24">Amount</th>
+                <th className="p-2 text-right w-24">Rate</th>
+                <th className="p-2 text-right w-28">Amount</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200">
@@ -139,11 +138,6 @@ export const RoughBillPrintModal: React.FC<RoughBillPrintModalProps> = ({
                   </td>
                   <td className="p-2 text-center font-mono font-bold">{item.quantity}</td>
                   <td className="p-2 text-right font-mono">{formatCurrency(item.unitPrice)}</td>
-                  {bill.totalDiscount > 0 && (
-                    <td className="p-2 text-center font-bold text-emerald-700">
-                      {item.discountPercent ? `${item.discountPercent}%` : '-'}
-                    </td>
-                  )}
                   <td className="p-2 text-right font-mono font-bold text-[#071F49]">
                     {formatCurrency(item.lineTotal)}
                   </td>
@@ -152,7 +146,7 @@ export const RoughBillPrintModal: React.FC<RoughBillPrintModalProps> = ({
             </tbody>
             <tfoot className="border-t-2 border-slate-300">
               <tr>
-                <td colSpan={bill.totalDiscount > 0 ? 4 : 3} className="p-2 text-right font-bold text-slate-600">
+                <td colSpan={3} className="p-2 text-right font-bold text-slate-600">
                   Subtotal:
                 </td>
                 <td colSpan={2} className="p-2 text-right font-mono font-bold text-slate-800">
@@ -161,7 +155,7 @@ export const RoughBillPrintModal: React.FC<RoughBillPrintModalProps> = ({
               </tr>
               {bill.totalDiscount > 0 && (
                 <tr>
-                  <td colSpan={4} className="p-2 text-right font-bold text-emerald-700">
+                  <td colSpan={3} className="p-2 text-right font-bold text-emerald-700">
                     Total Discount:
                   </td>
                   <td colSpan={2} className="p-2 text-right font-mono font-bold text-emerald-700">
@@ -170,7 +164,7 @@ export const RoughBillPrintModal: React.FC<RoughBillPrintModalProps> = ({
                 </tr>
               )}
               <tr className="bg-slate-100">
-                <td colSpan={bill.totalDiscount > 0 ? 4 : 3} className="p-2.5 text-right font-black text-sm text-[#071F49]">
+                <td colSpan={3} className="p-2.5 text-right font-black text-sm text-[#071F49]">
                   Estimated Grand Total:
                 </td>
                 <td colSpan={2} className="p-2.5 text-right font-mono font-black text-base text-[#071F49]">

@@ -59,20 +59,20 @@ export const Modal: React.FC<ModalProps> = ({
       />
 
       {/* Modal Dialog positioning */}
-      <div className="flex min-h-full items-center justify-center p-4 text-center sm:p-0">
+      <div className="flex min-h-full items-center justify-center p-2 sm:p-4 text-center">
         <div
-          className={`relative transform overflow-hidden rounded-2xl bg-white text-left shadow-2xl transition-all sm:my-8 w-full ${sizeClasses} animate-in fade-in zoom-in-95 duration-200 border border-slate-200`}
+          className={`relative transform overflow-hidden rounded-2xl bg-white text-left shadow-2xl transition-all my-2 sm:my-8 w-full max-w-[96vw] ${sizeClasses} animate-in fade-in zoom-in-95 duration-200 border border-slate-200`}
           role="dialog"
           aria-modal="true"
           aria-labelledby="modal-title"
         >
           {/* Header */}
-          <div className="flex items-start justify-between px-6 pt-6 pb-4 border-b border-slate-100">
+          <div className="flex items-start justify-between px-4 sm:px-6 pt-4 sm:pt-6 pb-3 sm:pb-4 border-b border-slate-100">
             <div>
-              <h3 id="modal-title" className="text-lg font-semibold text-slate-900">
+              <h3 id="modal-title" className="text-base sm:text-lg font-semibold text-slate-900">
                 {title}
               </h3>
-              {description && <p className="text-sm text-slate-500 mt-1">{description}</p>}
+              {description && <p className="text-xs sm:text-sm text-slate-500 mt-1">{description}</p>}
             </div>
             <button
               type="button"
@@ -85,11 +85,13 @@ export const Modal: React.FC<ModalProps> = ({
           </div>
 
           {/* Body */}
-          <div className="px-6 py-5 max-h-[calc(100vh-220px)] overflow-y-auto">{children}</div>
+          <div className="px-4 sm:px-6 py-3.5 sm:py-5 max-h-[calc(100vh-160px)] sm:max-h-[calc(100vh-220px)] overflow-y-auto">
+            {children}
+          </div>
 
           {/* Footer */}
           {footer && (
-            <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-3">
+            <div className="px-4 sm:px-6 py-3 sm:py-4 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-2 sm:gap-3 flex-wrap">
               {footer}
             </div>
           )}

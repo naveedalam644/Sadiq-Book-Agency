@@ -14,6 +14,7 @@ import {
   Building2,
   Layers,
   Tag,
+  ArrowRight,
 } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
@@ -65,6 +66,7 @@ export const Inventory: React.FC = () => {
   // Products state
   const [products, setProducts] = useState<ProductDocument[]>([]);
   const [productsLoading, setProductsLoading] = useState(false);
+  const [showAllProducts, setShowAllProducts] = useState(false);
   const [productFilters, setProductFilters] = useState<ProductFilters>({
     classification: 'all',
     categoryId: 'all',
@@ -183,12 +185,49 @@ export const Inventory: React.FC = () => {
     [toastError]
   );
 
+  // Check hierarchy selection status: Publisher -> Series -> Class
+  const hasPublisher = Boolean(productFilters.publisherId && productFilters.publisherId !== 'all');
+  const hasSeries = Boolean(productFilters.seriesId && productFilters.seriesId !== 'all');
+  const hasClass = Boolean(productFilters.targetClass && productFilters.targetClass !== 'all');
+
+  const publisherHasNoSeries = hasPublisher && seriesList.length === 0;
+  const isHierarchyComplete = (hasPublisher && hasSeries && hasClass) || (publisherHasNoSeries && hasClass);
+
+  const isSearching = Boolean(productFilters.searchTerm && productFilters.searchTerm.trim().length > 0);
+  const isNonBookClassification =
+    (productFilters.classification !== 'all' && productFilters.classification !== 'book') ||
+    productFilters.categoryId !== 'all';
+
+  const shouldDisplayProducts = showAllProducts || isHierarchyComplete || isSearching || isNonBookClassification;
+
+  const selectedPublisherName =
+    publishersList.find((p) => p.id === productFilters.publisherId)?.name || 'Publisher';
+  const selectedSeriesName =
+    seriesList.find((s) => s.id === productFilters.seriesId)?.name || 'Series';
+
+  const handleResetHierarchy = () => {
+    setShowAllProducts(false);
+    setProductFilters((prev) => ({
+      ...prev,
+      publisherId: 'all',
+      seriesId: 'all',
+      targetClass: 'all',
+    }));
+  };
+
   useEffect(() => {
     if (activeTab === 'products') {
-      setCursorHistory([]);
-      loadProducts(null, false, productFilters);
+      if (shouldDisplayProducts) {
+        setCursorHistory([]);
+        loadProducts(null, false, productFilters);
+      } else {
+        setProducts([]);
+        setProductCursor(null);
+        setHasMoreProducts(false);
+        setProductsLoading(false);
+      }
     }
-  }, [activeTab, productFilters, loadProducts]);
+  }, [activeTab, productFilters, shouldDisplayProducts, loadProducts]);
 
   // Fetch Stock Movements
   const loadMovements = useCallback(
@@ -405,21 +444,6 @@ export const Inventory: React.FC = () => {
           {formatCurrency(row.retailPrice)}
         </span>
       ),
-    },
-    {
-      key: 'publisherDiscount',
-      header: 'Pub. Disc %',
-      align: 'center',
-      render: (row) => {
-        const disc = typeof row.publisherDiscountPercent === 'number'
-          ? row.publisherDiscountPercent
-          : (row.retailPrice > 0 ? Math.max(0, Math.round(((row.retailPrice - row.costPrice) / row.retailPrice) * 100)) : 0);
-        return (
-          <span className="inline-flex items-center text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
-            {disc}%
-          </span>
-        );
-      },
     },
     {
       key: 'costPrice',
@@ -739,9 +763,151 @@ export const Inventory: React.FC = () => {
       {/* 4. Tab 1: Products Table & Filters */}
       {activeTab === 'products' && (
         <div className="space-y-4">
-          {/* Filters Bar */}
+          {/* Main Filter Card: Publisher > Series > Class Hierarchy + Catalog Controls */}
           <div className="p-4 bg-white border border-slate-200/90 rounded-2xl shadow-xs space-y-3">
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-3">
+            {/* Row 1: The 3 Hierarchical Steps + Show Full Catalog Toggle */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+              {/* Step 1: Publisher */}
+              <div>
+                <label className="block text-[11px] font-bold text-[#071F49] uppercase tracking-wide mb-1 flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-4 h-4 rounded-full bg-[#071F49] text-[#F5B51B] flex items-center justify-center text-[10px] font-black">
+                      1
+                    </span>
+                    <span>Publisher</span>
+                  </span>
+                  {hasPublisher && (
+                    <span className="text-[10px] text-emerald-600 font-bold">Selected</span>
+                  )}
+                </label>
+                <select
+                  className="w-full text-xs font-semibold border-2 border-slate-300 rounded-xl px-3 py-2 bg-white text-slate-800 focus:outline-none focus:border-[#071F49]"
+                  value={productFilters.publisherId || 'all'}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setShowAllProducts(false);
+                    setProductFilters((prev) => ({
+                      ...prev,
+                      publisherId: val,
+                      seriesId: 'all',
+                      targetClass: 'all',
+                    }));
+                  }}
+                >
+                  <option value="all">Select Publisher...</option>
+                  {publishersList.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Step 2: Series */}
+              <div>
+                <label className="block text-[11px] font-bold text-[#071F49] uppercase tracking-wide mb-1 flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <span
+                      className={`w-4 h-4 rounded-full flex items-center justify-center text-[10px] font-black ${
+                        hasPublisher ? 'bg-[#071F49] text-[#F5B51B]' : 'bg-slate-300 text-slate-600'
+                      }`}
+                    >
+                      2
+                    </span>
+                    <span>Series</span>
+                  </span>
+                  {hasSeries && (
+                    <span className="text-[10px] text-emerald-600 font-bold">Selected</span>
+                  )}
+                </label>
+                <select
+                  className="w-full text-xs font-semibold border-2 border-slate-300 rounded-xl px-3 py-2 bg-white text-slate-800 focus:outline-none focus:border-[#071F49] disabled:bg-slate-100 disabled:text-slate-400 disabled:border-slate-200"
+                  value={productFilters.seriesId || 'all'}
+                  disabled={!hasPublisher}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setShowAllProducts(false);
+                    setProductFilters((prev) => ({
+                      ...prev,
+                      seriesId: val,
+                      targetClass: 'all',
+                    }));
+                  }}
+                >
+                  <option value="all">
+                    {!hasPublisher
+                      ? 'Select Publisher first'
+                      : seriesList.length === 0
+                      ? 'No Series (Select Class next)'
+                      : 'Select Series...'}
+                  </option>
+                  {seriesList.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Step 3: Class */}
+              <div>
+                <label className="block text-[11px] font-bold text-[#071F49] uppercase tracking-wide mb-1 flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <span
+                      className={`w-4 h-4 rounded-full flex items-center justify-center text-[10px] font-black ${
+                        hasPublisher ? 'bg-[#071F49] text-[#F5B51B]' : 'bg-slate-300 text-slate-600'
+                      }`}
+                    >
+                      3
+                    </span>
+                    <span>Class</span>
+                  </span>
+                  {hasClass && (
+                    <span className="text-[10px] text-emerald-600 font-bold">Selected</span>
+                  )}
+                </label>
+                <select
+                  className="w-full text-xs font-semibold border-2 border-slate-300 rounded-xl px-3 py-2 bg-white text-slate-800 focus:outline-none focus:border-[#071F49] disabled:bg-slate-100 disabled:text-slate-400 disabled:border-slate-200"
+                  value={productFilters.targetClass || 'all'}
+                  disabled={!hasPublisher}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setShowAllProducts(false);
+                    setProductFilters((prev) => ({
+                      ...prev,
+                      targetClass: val,
+                    }));
+                  }}
+                >
+                  <option value="all">Select Class...</option>
+                  {STANDARD_CLASSES.map((cls) => (
+                    <option key={cls} value={cls}>
+                      {cls}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Quick Action: View Full Catalog Option */}
+              <div className="flex flex-col justify-end">
+                <button
+                  type="button"
+                  onClick={() => setShowAllProducts((prev) => !prev)}
+                  className={`w-full py-2 px-3.5 rounded-xl text-xs font-extrabold flex items-center justify-center gap-2 transition shadow-xs cursor-pointer ${
+                    showAllProducts
+                      ? 'bg-[#071F49] text-[#F5B51B] ring-2 ring-[#F5B51B]'
+                      : 'bg-amber-100/70 hover:bg-amber-200/80 text-amber-950 border border-amber-300'
+                  }`}
+                  title="Toggle between Publisher Hierarchy and Full Catalog"
+                >
+                  <Layers className="w-4 h-4 text-amber-700" />
+                  <span>{showAllProducts ? 'Showing All Products' : 'View Full Catalog (All Items)'}</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Row 2: Search, Classification, Category, and Stock Status */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-3 pt-2 border-t border-slate-100">
               <div className="sm:col-span-2 xl:col-span-2">
                 <SearchInput
                   placeholder="Search books, SKU, barcode, author, brand..."
@@ -751,70 +917,7 @@ export const Inventory: React.FC = () => {
               </div>
 
               <select
-                className="text-xs border border-slate-300 rounded-xl px-3 py-2.5 bg-white text-slate-800 focus:outline-none focus:border-[#F5B51B]"
-                value={productFilters.publisherId || 'all'}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  setProductFilters((prev) => ({
-                    ...prev,
-                    publisherId: val,
-                    seriesId: 'all',
-                  }));
-                }}
-              >
-                <option value="all">All Publishers</option>
-                {publishersList.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </select>
-
-              <select
-                className="text-xs border border-slate-300 rounded-xl px-3 py-2.5 bg-white text-slate-800 focus:outline-none focus:border-[#F5B51B] disabled:bg-slate-50 disabled:text-slate-400"
-                value={productFilters.seriesId || 'all'}
-                disabled={!productFilters.publisherId || productFilters.publisherId === 'all'}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  setProductFilters((prev) => ({
-                    ...prev,
-                    seriesId: val,
-                  }));
-                }}
-              >
-                <option value="all">
-                  {!productFilters.publisherId || productFilters.publisherId === 'all'
-                    ? 'All Series (Select Pub first)'
-                    : 'All Series'}
-                </option>
-                {seriesList.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name}
-                  </option>
-                ))}
-              </select>
-
-              <select
-                className="text-xs border border-slate-300 rounded-xl px-3 py-2.5 bg-white text-slate-800 focus:outline-none focus:border-[#F5B51B]"
-                value={productFilters.targetClass || 'all'}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  setProductFilters((prev) => ({
-                    ...prev,
-                    targetClass: val,
-                  }));
-                }}
-              >
-                <option value="all">All Classes</option>
-                {STANDARD_CLASSES.map((cls) => (
-                  <option key={cls} value={cls}>
-                    {cls}
-                  </option>
-                ))}
-              </select>
-
-              <select
-                className="text-xs border border-slate-300 rounded-xl px-3 py-2.5 bg-white text-slate-800 focus:outline-none focus:border-[#F5B51B]"
+                className="text-xs border border-slate-300 rounded-xl px-3 py-2 bg-white text-slate-800 focus:outline-none focus:border-[#F5B51B]"
                 value={productFilters.classification}
                 onChange={(e) => {
                   const val = e.target.value as any;
@@ -832,7 +935,7 @@ export const Inventory: React.FC = () => {
               </select>
 
               <select
-                className="text-xs border border-slate-300 rounded-xl px-3 py-2.5 bg-white text-slate-800 focus:outline-none focus:border-[#F5B51B]"
+                className="text-xs border border-slate-300 rounded-xl px-3 py-2 bg-white text-slate-800 focus:outline-none focus:border-[#F5B51B]"
                 value={productFilters.categoryId}
                 onChange={(e) => {
                   const val = e.target.value;
@@ -850,7 +953,7 @@ export const Inventory: React.FC = () => {
               </select>
 
               <select
-                className="text-xs border border-slate-300 rounded-xl px-3 py-2.5 bg-white text-slate-800 focus:outline-none focus:border-[#F5B51B]"
+                className="text-xs border border-slate-300 rounded-xl px-3 py-2 bg-white text-slate-800 focus:outline-none focus:border-[#F5B51B]"
                 value={productFilters.stockStatus}
                 onChange={(e) => {
                   const val = e.target.value as any;
@@ -864,48 +967,234 @@ export const Inventory: React.FC = () => {
                 <option value="low_stock">Low Stock (≤ Threshold)</option>
                 <option value="out_of_stock">Out of Stock (Zero)</option>
               </select>
+
+              {(hasPublisher || hasSeries || hasClass || showAllProducts || isSearching) && (
+                <div className="xl:col-span-2 flex items-center justify-end">
+                  <button
+                    type="button"
+                    onClick={handleResetHierarchy}
+                    className="text-xs font-bold text-rose-600 hover:text-rose-800 hover:underline cursor-pointer"
+                  >
+                    Reset All Filters
+                  </button>
+                </div>
+              )}
             </div>
           </div>
 
-          {/* Table */}
-          <Table
-            columns={productColumns}
-            data={products}
-            keyExtractor={(item) => item.id}
-            isLoading={productsLoading}
-            emptyMessage="No products match the selected filters. Click 'Add New Product' to register inventory."
-          />
+          {!shouldDisplayProducts ? (
+            /* Guidance Box: Prompts user to select Publisher -> Series -> Class */
+            <div className="bg-white rounded-2xl border-2 border-dashed border-slate-300 p-8 sm:p-12 text-center shadow-xs">
+              <div className="w-16 h-16 rounded-2xl bg-[#071F49] text-[#F5B51B] flex items-center justify-center mx-auto mb-4 shadow-lg ring-4 ring-[#F5B51B]/20">
+                <BookOpen className="w-8 h-8" />
+              </div>
 
-          {/* Pagination Controls */}
-          <div className="flex items-center justify-between px-2 text-xs text-slate-500">
-            <span>
-              Showing {products.length} records (Page size: 25)
-            </span>
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={cursorHistory.length === 0 || productsLoading}
-                onClick={() => {
-                  const newHistory = [...cursorHistory];
-                  newHistory.pop();
-                  const prevCursor = newHistory[newHistory.length - 1] || null;
-                  setCursorHistory(newHistory);
-                  loadProducts(prevCursor, false);
-                }}
-              >
-                Previous
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={!hasMoreProducts || productsLoading}
-                onClick={() => loadProducts(productCursor, true)}
-              >
-                Next Page
-              </Button>
+              <h3 className="text-lg sm:text-xl font-black text-[#071F49]">
+                Select Publisher, Series & Class to View Books
+              </h3>
+              <p className="text-xs sm:text-sm text-slate-500 max-w-lg mx-auto mt-1.5 leading-relaxed">
+                Direct listing of all store books is filtered to keep inventory navigation instant and organized. Follow the 3 steps above to load specific books, or view the entire catalog at once.
+              </p>
+
+              {/* 3 Step Interactive Indicator */}
+              <div className="flex flex-wrap items-center justify-center gap-2 sm:gap-3 my-6">
+                <div
+                  className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-2 border transition ${
+                    hasPublisher
+                      ? 'bg-emerald-50 text-emerald-800 border-emerald-300 shadow-xs'
+                      : 'bg-amber-50 text-amber-900 border-amber-300'
+                  }`}
+                >
+                  <span className="w-5 h-5 rounded-full bg-current/10 flex items-center justify-center text-[10px] font-black">
+                    1
+                  </span>
+                  <span>
+                    Publisher: {hasPublisher ? selectedPublisherName : 'Select Publisher'}
+                  </span>
+                </div>
+
+                <ArrowRight className="w-4 h-4 text-slate-400 hidden sm:block" />
+
+                <div
+                  className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-2 border transition ${
+                    hasSeries
+                      ? 'bg-emerald-50 text-emerald-800 border-emerald-300 shadow-xs'
+                      : hasPublisher
+                      ? 'bg-amber-50 text-amber-900 border-amber-300'
+                      : 'bg-slate-100 text-slate-500 border-slate-200'
+                  }`}
+                >
+                  <span className="w-5 h-5 rounded-full bg-current/10 flex items-center justify-center text-[10px] font-black">
+                    2
+                  </span>
+                  <span>
+                    Series: {hasSeries ? selectedSeriesName : 'Select Series'}
+                  </span>
+                </div>
+
+                <ArrowRight className="w-4 h-4 text-slate-400 hidden sm:block" />
+
+                <div
+                  className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-2 border transition ${
+                    hasClass
+                      ? 'bg-emerald-50 text-emerald-800 border-emerald-300 shadow-xs'
+                      : hasSeries || hasPublisher
+                      ? 'bg-amber-50 text-amber-900 border-amber-300'
+                      : 'bg-slate-100 text-slate-500 border-slate-200'
+                  }`}
+                >
+                  <span className="w-5 h-5 rounded-full bg-current/10 flex items-center justify-center text-[10px] font-black">
+                    3
+                  </span>
+                  <span>
+                    Class: {hasClass ? productFilters.targetClass : 'Select Class'}
+                  </span>
+                </div>
+              </div>
+
+              {/* Full Catalog Button */}
+              <div className="flex items-center justify-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => setShowAllProducts(true)}
+                  className="px-5 py-2.5 bg-[#071F49] hover:bg-[#0A255B] text-[#F5B51B] font-extrabold text-xs sm:text-sm rounded-xl shadow-md transition active:scale-95 flex items-center gap-2 cursor-pointer"
+                >
+                  <Layers className="w-4 h-4" />
+                  <span>View Full Catalog (All Products)</span>
+                </button>
+              </div>
+
+              {/* Quick Clickable Publisher Chips */}
+              {publishersList.length > 0 && (
+                <div className="mt-8 pt-6 border-t border-slate-200 max-w-xl mx-auto">
+                  <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-2.5">
+                    Or Click a Publisher to Begin:
+                  </span>
+                  <div className="flex flex-wrap items-center justify-center gap-2">
+                    {publishersList.slice(0, 8).map((pub) => (
+                      <button
+                        key={pub.id}
+                        type="button"
+                        onClick={() => {
+                          setProductFilters((prev) => ({
+                            ...prev,
+                            publisherId: pub.id,
+                            seriesId: 'all',
+                            targetClass: 'all',
+                          }));
+                        }}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition cursor-pointer ${
+                          productFilters.publisherId === pub.id
+                            ? 'bg-[#071F49] text-[#F5B51B] border-[#071F49]'
+                            : 'bg-slate-100 hover:bg-[#F5B51B]/20 text-slate-700 hover:text-[#071F49] border-slate-200'
+                        }`}
+                      >
+                        {pub.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
-          </div>
+          ) : (
+            /* Table & Results Display */
+            <>
+              {/* Active Filter Indicators */}
+              {isHierarchyComplete && (
+                <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl flex items-center justify-between flex-wrap gap-2 text-xs">
+                  <div className="flex items-center gap-2 text-[#071F49] font-medium flex-wrap">
+                    <span className="font-bold">Active Hierarchy Filter:</span>
+                    <span className="bg-white px-2 py-0.5 rounded border border-blue-300 font-bold">
+                      {selectedPublisherName}
+                    </span>
+                    <span>&rarr;</span>
+                    <span className="bg-white px-2 py-0.5 rounded border border-blue-300 font-bold">
+                      {selectedSeriesName}
+                    </span>
+                    <span>&rarr;</span>
+                    <span className="bg-[#071F49] text-[#F5B51B] px-2 py-0.5 rounded font-black">
+                      {productFilters.targetClass}
+                    </span>
+                    <span className="text-slate-600 font-mono font-semibold">
+                      ({products.length} books)
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleResetHierarchy}
+                      className="px-2.5 py-1 text-[11px] bg-white hover:bg-slate-100 text-slate-700 rounded-lg border border-slate-300 font-bold transition cursor-pointer"
+                    >
+                      Change Hierarchy
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowAllProducts(true)}
+                      className="px-2.5 py-1 text-[11px] bg-[#071F49] hover:bg-[#0A255B] text-[#F5B51B] rounded-lg font-bold transition cursor-pointer"
+                    >
+                      View Full Catalog &rarr;
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {showAllProducts && (
+                <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-center justify-between flex-wrap gap-2 text-xs">
+                  <div className="flex items-center gap-2 text-amber-950">
+                    <Layers className="w-4 h-4 text-amber-700" />
+                    <span className="font-bold">Viewing Full Catalog (All Store Products)</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowAllProducts(false)}
+                    className="px-3 py-1 bg-white hover:bg-amber-100 text-[#071F49] border border-amber-300 rounded-lg font-bold text-[11px] transition cursor-pointer"
+                  >
+                    Filter by Publisher Hierarchy &rarr;
+                  </button>
+                </div>
+              )}
+
+              {/* Table */}
+              <Table
+                columns={productColumns}
+                data={products}
+                keyExtractor={(item) => item.id}
+                isLoading={productsLoading}
+                emptyMessage="No products match the selected filters. Click 'Add New Product' to register inventory."
+              />
+
+              {/* Pagination Controls */}
+              <div className="flex items-center justify-between px-2 text-xs text-slate-500">
+                <span>
+                  Showing {products.length} records (Page size: 25)
+                </span>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={cursorHistory.length === 0 || productsLoading}
+                    onClick={() => {
+                      const newHistory = [...cursorHistory];
+                      newHistory.pop();
+                      const prevCursor = newHistory[newHistory.length - 1] || null;
+                      setCursorHistory(newHistory);
+                      loadProducts(prevCursor, false);
+                    }}
+                  >
+                    Previous
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={!hasMoreProducts || productsLoading}
+                    onClick={() => loadProducts(productCursor, true)}
+                  >
+                    Next Page
+                  </Button>
+                </div>
+              </div>
+            </>
+          )}
         </div>
       )}
 

@@ -213,9 +213,8 @@ export const RoughBillModal: React.FC<RoughBillModalProps> = ({
       ? (prod.costPrice || prod.wholesalePrice || prod.retailPrice || 0)
       : (prod.retailPrice || prod.mrp || 0);
 
-    const defaultDisc = billType === 'publisher_order'
-      ? 0
-      : (prod.publisherDiscountPercent || 0);
+    // Publisher discount % is strictly confidential trade secret; never leak to bill default
+    const defaultDisc = 0;
 
     setAddQuantity(1);
     setAddUnitPrice(defaultRate);

@@ -746,6 +746,65 @@ export const usePOSCart = (options: UsePOSCartOptions = {}) => {
     return { success: true };
   }, [lockStatus, items, session, customerType, customer, notes, saveCartToStorage]);
 
+  const applyGlobalDiscount = useCallback((discountRate: number): CartOperationResult => {
+    setCartError(null);
+
+    if (lockStatus !== 'owner') {
+      const err = lockStatus === 'pending'
+        ? 'Register lock acquisition is in progress. Please wait...'
+        : lockStatus === 'unsupported'
+        ? 'Register operations are disabled because Web Locks API is unavailable.'
+        : 'Register is in read-only mode.';
+      setCartError(err);
+      return { success: false, error: err };
+    }
+
+    if (items.length === 0) {
+      return { success: true };
+    }
+
+    const rate = Math.max(0, Math.min(100, Number(discountRate) || 0));
+
+    const updatedItems = items.map((item) => {
+      const discountAmount = roundMoney(item.unitPrice * (rate / 100));
+      const effectivePrice = Math.max(0, roundMoney(item.unitPrice - discountAmount));
+      const lineTotal = roundMoney(effectivePrice * item.quantity);
+      return {
+        ...item,
+        discountRate: rate,
+        discountAmount,
+        effectivePrice,
+        lineTotal,
+        isManualDiscount: rate > 0,
+        appliedRuleType: 'manual_override' as const,
+      };
+    });
+
+    setItems(updatedItems);
+    saveCartToStorage(session, customerType, customer, updatedItems, notes);
+    return { success: true };
+  }, [lockStatus, items, session, customerType, customer, notes, saveCartToStorage]);
+
+  const applyGlobalDiscountAmount = useCallback((discountAmountTotal: number): CartOperationResult => {
+    setCartError(null);
+
+    if (lockStatus !== 'owner') {
+      const err = 'Register is in read-only mode.';
+      setCartError(err);
+      return { success: false, error: err };
+    }
+
+    if (items.length === 0) return { success: true };
+
+    const rawSubtotal = items.reduce((sum, item) => roundMoney(sum + item.unitPrice * item.quantity), 0);
+    if (rawSubtotal <= 0) return { success: true };
+
+    const cleanAmt = Math.max(0, Math.min(rawSubtotal, Number(discountAmountTotal) || 0));
+    const effectiveRate = Math.round((cleanAmt / rawSubtotal) * 10000) / 100;
+
+    return applyGlobalDiscount(effectiveRate);
+  }, [items, applyGlobalDiscount, lockStatus]);
+
   const removeItem = useCallback((productId: string): CartOperationResult => {
     setCartError(null);
 
@@ -909,6 +968,8 @@ export const usePOSCart = (options: UsePOSCartOptions = {}) => {
     addSyllabusSet,
     updateQuantity,
     updateItemDiscount,
+    applyGlobalDiscount,
+    applyGlobalDiscountAmount,
     removeItem,
     clearCart,
     setCustomer,

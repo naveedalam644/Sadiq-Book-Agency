@@ -1,5 +1,5 @@
 import React from 'react';
-import { Menu, LogOut, Shield, Sparkles } from 'lucide-react';
+import { Menu, LogOut, Shield } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 
 export interface HeaderProps {
@@ -7,56 +7,37 @@ export interface HeaderProps {
 }
 
 export const Header: React.FC<HeaderProps> = ({ onToggleMobileNav }) => {
-  const { currentUser, logout, isFirebaseReady } = useAuth();
+  const { currentUser, logout } = useAuth();
 
   const businessName =
     import.meta.env.VITE_BUSINESS_NAME || 'Sadiq Book Agency';
 
   return (
     <header className="sticky top-0 z-30 bg-[#071F49] text-white border-b-2 border-[#F5B51B] shadow-md">
-      <div className="px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-4">
+      <div className="px-3 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-3 sm:gap-4">
         {/* Left side: Mobile Hamburger & Store Branding */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 sm:gap-3 min-w-0">
           <button
             type="button"
             onClick={onToggleMobileNav}
-            className="lg:hidden p-2 rounded-lg text-slate-300 hover:text-white hover:bg-[#0A255B] transition focus:outline-none focus:ring-2 focus:ring-[#F5B51B]"
+            className="lg:hidden p-2 rounded-lg text-slate-300 hover:text-white hover:bg-[#0A255B] transition focus:outline-none focus:ring-2 focus:ring-[#F5B51B] shrink-0"
             aria-label="Open mobile navigation"
           >
             <Menu className="w-5 h-5" />
           </button>
 
-          <div className="flex items-center gap-2.5">
-            <span className="font-extrabold text-white text-sm sm:text-base tracking-tight flex items-center gap-2">
-              <span className="text-white">{businessName}</span>
-              <span className="hidden sm:inline text-xs font-normal text-slate-300">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="font-extrabold text-white text-sm sm:text-base tracking-tight truncate">
+              {businessName}
+              <span className="hidden sm:inline text-xs font-normal text-slate-300 ml-1.5">
                 | Management System
               </span>
-            </span>
-            <span className="hidden md:inline-flex items-center gap-1 text-[11px] font-bold bg-[#F5B51B] text-[#071F49] px-2 py-0.5 rounded-full shadow-xs">
-              <Sparkles className="w-3 h-3 text-[#071F49]" />
-              Live Store
             </span>
           </div>
         </div>
 
-        {/* Right side: Firebase Status, Lock Toggle & Admin User Control */}
-        <div className="flex items-center gap-3 sm:gap-4">
-          {/* Firebase Connection Pill */}
-          <div className="hidden sm:flex items-center">
-            {isFirebaseReady ? (
-              <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-300 bg-emerald-950/60 px-2.5 py-1 rounded-full border border-emerald-500/40">
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                <span>Firebase Connected</span>
-              </span>
-            ) : (
-              <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-amber-300 bg-amber-950/60 px-2.5 py-1 rounded-full border border-amber-500/40">
-                <span className="w-2 h-2 rounded-full bg-amber-400"></span>
-                <span>Firebase Pending</span>
-              </span>
-            )}
-          </div>
-
+        {/* Right side: Admin User Control */}
+        <div className="flex items-center gap-2 sm:gap-3 shrink-0">
           {/* Admin User Chip */}
           <div className="flex items-center gap-2.5 pl-2 sm:pl-3 border-l border-[#0E2E70]">
             <div className="w-8 h-8 rounded-full bg-[#F5B51B] border-2 border-white/20 flex items-center justify-center text-[#071F49] font-extrabold text-xs uppercase shadow-xs">

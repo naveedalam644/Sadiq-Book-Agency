@@ -20,6 +20,7 @@ import {
   BookOpen,
   Layers,
   GraduationCap,
+  Tag,
 } from 'lucide-react';
 import { WhatsAppIcon } from '../components/common/WhatsAppIcon';
 import { useAuth } from '../hooks/useAuth';
@@ -41,7 +42,11 @@ import { A4InvoiceModal } from '../components/pos/A4InvoiceModal';
 import { AdminOverrideModal } from '../components/pos/AdminOverrideModal';
 import { ProductHistoryModal } from '../components/inventory/ProductHistoryModal';
 import { SchoolSyllabusSetModal } from '../components/pos/SchoolSyllabusSetModal';
+import { ProductFormModal } from '../components/inventory/ProductFormModal';
 import { STANDARD_CLASSES } from '../services/syllabusService';
+import { getCategories } from '../services/categoryService';
+import { createProduct, type CreateProductInput } from '../services/productService';
+import { useToast } from '../hooks/useToast';
 import type {
   CustomerDocument,
   CustomerType,
@@ -50,6 +55,7 @@ import type {
   ProductDocument,
   PublisherDocument,
   SeriesDocument,
+  CategoryDocument,
 } from '../types/database';
 
 const COMMON_SHEET_PRESETS = ['40', '60', '80', '100', '120', '160', '200', '240', '300'];
@@ -77,6 +83,8 @@ export const POS: React.FC = () => {
     addSyllabusSet,
     updateQuantity,
     updateItemDiscount,
+    applyGlobalDiscount,
+    applyGlobalDiscountAmount,
     removeItem,
     clearCart,
     setCustomer,
@@ -89,6 +97,31 @@ export const POS: React.FC = () => {
 
   // 1b. School Syllabus Modal State
   const [isSyllabusModalOpen, setIsSyllabusModalOpen] = useState(false);
+  const [isAddProductModalOpen, setIsAddProductModalOpen] = useState(false);
+  const [categories, setCategories] = useState<CategoryDocument[]>([]);
+  const { success: toastSuccess, error: toastError } = useToast();
+
+  useEffect(() => {
+    getCategories()
+      .then(setCategories)
+      .catch((err) => console.warn('Categories load error in POS:', err));
+  }, []);
+
+  const handleSaveProduct = async (payload: CreateProductInput) => {
+    try {
+      await createProduct(
+        payload,
+        currentUser?.uid || 'cashier',
+        currentUser?.email || 'cashier@sadiqbookagency.com'
+      );
+      toastSuccess(`Product "${payload.title}" registered in catalog.`);
+      setIsAddProductModalOpen(false);
+      setSearchTerm(payload.title);
+    } catch (err: any) {
+      toastError(err?.message || 'Failed to add product');
+      throw err;
+    }
+  };
 
   // 2. Search & Filter Category States
   const [searchTerm, setSearchTerm] = useState('');
@@ -616,6 +649,45 @@ export const POS: React.FC = () => {
   };
 
   // ---------------------------------------------------------------------------------
+  // OVERALL BILL DISCOUNT HANDLERS
+  // ---------------------------------------------------------------------------------
+  const [globalDiscountMode, setGlobalDiscountMode] = useState<'percent' | 'fixed'>('percent');
+  const [globalDiscountValue, setGlobalDiscountValue] = useState<string>('');
+
+  const handleGlobalDiscountChange = (val: string) => {
+    setGlobalDiscountValue(val);
+    const num = Math.max(0, parseFloat(val) || 0);
+    if (globalDiscountMode === 'percent') {
+      applyGlobalDiscount(num);
+    } else {
+      applyGlobalDiscountAmount(num);
+    }
+  };
+
+  const handleGlobalDiscountModeChange = (mode: 'percent' | 'fixed') => {
+    setGlobalDiscountMode(mode);
+    setGlobalDiscountValue('');
+    applyGlobalDiscount(0);
+  };
+
+  const handlePresetDiscountClick = (presetPercent: number) => {
+    setGlobalDiscountMode('percent');
+    setGlobalDiscountValue(presetPercent > 0 ? String(presetPercent) : '');
+    applyGlobalDiscount(presetPercent);
+  };
+
+  const handleClearGlobalDiscount = () => {
+    setGlobalDiscountValue('');
+    applyGlobalDiscount(0);
+  };
+
+  useEffect(() => {
+    if (items.length === 0 && globalDiscountValue) {
+      setGlobalDiscountValue('');
+    }
+  }, [items.length, globalDiscountValue]);
+
+  // ---------------------------------------------------------------------------------
   // PAYMENT CALCULATION
   // ---------------------------------------------------------------------------------
   const numericTendered = Math.max(0, Number(cashTendered) || 0);
@@ -699,6 +771,7 @@ export const POS: React.FC = () => {
         setCompletedSale(result.sale);
         setIsReceiptModalOpen(true);
         confirmCheckoutSuccess();
+        setGlobalDiscountValue('');
         setCashTendered('');
         setActiveAdminOverride(undefined);
       });
@@ -832,6 +905,17 @@ export const POS: React.FC = () => {
 
               <button
                 type="button"
+                onClick={() => setIsAddProductModalOpen(true)}
+                className="shrink-0 flex items-center gap-1.5 px-3 py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold shadow-xs hover:shadow transition-all cursor-pointer border border-emerald-600"
+                title="Cashier Quick Add: Register new book or notebook into catalog"
+              >
+                <Plus className="w-4 h-4 text-[#F5B51B]" />
+                <span className="hidden sm:inline">Add Product</span>
+                <span className="sm:hidden">Add</span>
+              </button>
+
+              <button
+                type="button"
                 onClick={() => setIsSyllabusModalOpen(true)}
                 className="shrink-0 flex items-center gap-1.5 px-3 py-2.5 bg-[#071F49] hover:bg-[#0c2f6d] text-[#F5B51B] hover:text-white rounded-xl text-xs font-bold shadow-xs hover:shadow transition-all cursor-pointer border border-[#F5B51B]/40"
                 title="Load school course book set by Board > School > Class"
@@ -854,7 +938,8 @@ export const POS: React.FC = () => {
                 }`}
               >
                 <BookOpen className="w-3.5 h-3.5 text-[#F5B51B]" />
-                <span>Books (Publisher, Series & Class)</span>
+                <span className="hidden sm:inline">Books (Publisher, Series & Class)</span>
+                <span className="sm:hidden">Books</span>
               </button>
 
               <button
@@ -867,7 +952,8 @@ export const POS: React.FC = () => {
                 }`}
               >
                 <Layers className="w-3.5 h-3.5 text-[#F5B51B]" />
-                <span>Notebooks & Registers (Sheets)</span>
+                <span className="hidden sm:inline">Notebooks & Registers (Sheets)</span>
+                <span className="sm:hidden">Notebooks</span>
               </button>
 
               <button
@@ -1376,6 +1462,93 @@ export const POS: React.FC = () => {
 
           {/* Cart Bottom Financial Summary & Payment Box */}
           <div className="p-4 bg-white border-t border-slate-200 space-y-3 shrink-0 shadow-inner">
+            {/* Overall Bill Discount Control */}
+            {items.length > 0 && (
+              <div className="p-2.5 bg-slate-50 border border-slate-200/90 rounded-xl space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                    <Tag className="w-3.5 h-3.5 text-[#071F49]" />
+                    <span>Overall Bill Discount</span>
+                  </span>
+                  <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-lg p-0.5 text-[11px] font-bold">
+                    <button
+                      type="button"
+                      onClick={() => handleGlobalDiscountModeChange('percent')}
+                      className={`px-2 py-0.5 rounded transition cursor-pointer ${
+                        globalDiscountMode === 'percent'
+                          ? 'bg-[#071F49] text-white shadow-2xs'
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      % Percent
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleGlobalDiscountModeChange('fixed')}
+                      className={`px-2 py-0.5 rounded transition cursor-pointer ${
+                        globalDiscountMode === 'fixed'
+                          ? 'bg-[#071F49] text-white shadow-2xs'
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      PKR Flat
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <div className="relative flex-1">
+                    <input
+                      type="number"
+                      min="0"
+                      max={globalDiscountMode === 'percent' ? 100 : subtotal}
+                      step="any"
+                      placeholder={globalDiscountMode === 'percent' ? 'e.g. 10% on all books' : 'e.g. 200 PKR off total bill'}
+                      value={globalDiscountValue}
+                      onChange={(e) => handleGlobalDiscountChange(e.target.value)}
+                      disabled={isReadOnly}
+                      className="w-full pl-3 pr-9 py-1.5 text-xs font-bold border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#071F49] bg-white text-slate-800"
+                    />
+                    <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">
+                      {globalDiscountMode === 'percent' ? '%' : 'PKR'}
+                    </span>
+                  </div>
+
+                  {globalDiscountValue && parseFloat(globalDiscountValue) > 0 ? (
+                    <button
+                      type="button"
+                      onClick={handleClearGlobalDiscount}
+                      disabled={isReadOnly}
+                      className="px-2.5 py-1.5 text-xs font-bold text-rose-600 hover:bg-rose-50 border border-rose-200 rounded-lg transition cursor-pointer"
+                      title="Reset Overall Discount"
+                    >
+                      Reset
+                    </button>
+                  ) : null}
+                </div>
+
+                {/* Quick 1-Click Preset Discount Buttons */}
+                <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
+                  <span className="text-[10px] text-slate-400 font-semibold mr-0.5">Quick:</span>
+                  {[0, 5, 10, 15, 20, 25].map((preset) => (
+                    <button
+                      key={preset}
+                      type="button"
+                      onClick={() => handlePresetDiscountClick(preset)}
+                      disabled={isReadOnly}
+                      className={`px-2 py-0.5 text-[11px] font-bold rounded-md border transition cursor-pointer ${
+                        globalDiscountMode === 'percent' && parseFloat(globalDiscountValue) === preset
+                          ? 'bg-[#071F49] text-[#F5B51B] border-[#071F49] shadow-2xs'
+                          : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100 hover:border-slate-300'
+                      }`}
+                    >
+                      {preset}%
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Subtotals */}
             <div className="space-y-1 text-xs">
               <div className="flex justify-between text-slate-600">
@@ -1627,6 +1800,13 @@ export const POS: React.FC = () => {
         isOpen={isSyllabusModalOpen}
         onClose={() => setIsSyllabusModalOpen(false)}
         onLoadItemsIntoCart={handleLoadSyllabusItems}
+      />
+
+      <ProductFormModal
+        isOpen={isAddProductModalOpen}
+        onClose={() => setIsAddProductModalOpen(false)}
+        onSubmit={handleSaveProduct}
+        categories={categories}
       />
     </div>
   );

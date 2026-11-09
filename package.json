@@ -39,6 +39,11 @@
     "test:syllabus": "node --experimental-strip-types tests/syllabus_school_sets_verification.ts",
     "test:rough_bill": "node --experimental-strip-types tests/rough_bill_and_sidebar_grouping_verification.ts",
     "test:publisher_and_class": "node --experimental-strip-types tests/publisher_analytics_and_class_filter_verification.ts",
+    "test:pos_discount": "node --experimental-strip-types tests/pos_overall_discount_verification.ts",
+    "test:confidential_discount": "node --experimental-strip-types tests/confidential_discount_verification.ts",
+    "test:admin_lock": "node --experimental-strip-types tests/admin_sidebar_lock_and_cashier_mode_verification.ts",
+    "test:dual_printer": "node --experimental-strip-types tests/thermal_and_a4_dual_printer_verification.ts",
+    "test:inventory_hierarchy": "node --experimental-strip-types tests/inventory_hierarchy_and_login_flow_verification.ts",
     "test:emulator": "node scripts/run_emulator_tests.js",
     "preview": "vite preview"
   },

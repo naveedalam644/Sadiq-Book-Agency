@@ -1,30 +1,30 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Lock, Eye, EyeOff, ShieldAlert, KeyRound, AlertTriangle, X, CheckCircle2 } from 'lucide-react';
+import { Lock, Eye, EyeOff, X, CheckCircle2, Loader2, ArrowRight } from 'lucide-react';
 import { useAdminLock } from '../../contexts/AdminLockContext';
 
 export interface AdminSectionLockModalProps {
   isOpen: boolean;
   onClose: () => void;
-  targetPath: string;
-  targetName: string;
+  targetPath?: string;
+  targetName?: string;
   onSuccess?: () => void;
 }
 
 export const AdminSectionLockModal: React.FC<AdminSectionLockModalProps> = ({
   isOpen,
   onClose,
-  targetPath,
-  targetName,
+  targetPath = '',
+  targetName = 'Admin Protected Section',
   onSuccess,
 }) => {
-  const { unlockSection, openChangePasswordModal, defaultPinNotice } = useAdminLock();
+  const { unlockWithFirebasePassword } = useAdminLock();
   const navigate = useNavigate();
 
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [rememberSession, setRememberSession] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isVerifying, setIsVerifying] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
 
   const inputRef = useRef<HTMLInputElement>(null);
@@ -35,6 +35,7 @@ export const AdminSectionLockModal: React.FC<AdminSectionLockModalProps> = ({
       setPassword('');
       setError(null);
       setIsSuccess(false);
+      setIsVerifying(false);
       setTimeout(() => {
         inputRef.current?.focus();
       }, 100);
@@ -43,31 +44,39 @@ export const AdminSectionLockModal: React.FC<AdminSectionLockModalProps> = ({
 
   if (!isOpen) return null;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
 
-    if (!password.trim()) {
-      setError('Please enter Admin Password');
+    const trimmed = password.trim();
+    if (!trimmed) {
+      setError('Please enter Admin Password.');
       return;
     }
 
-    const unlocked = unlockSection(targetPath, password.trim(), rememberSession);
+    setIsVerifying(true);
 
-    if (unlocked) {
-      setIsSuccess(true);
-      setTimeout(() => {
-        onClose();
-        if (onSuccess) {
-          onSuccess();
-        } else if (targetPath) {
-          navigate(targetPath);
-        }
-      }, 250);
-    } else {
-      setError('Ghalat Admin Password! (Incorrect Password). Please try again.');
-      setPassword('');
-      inputRef.current?.focus();
+    try {
+      const res = await unlockWithFirebasePassword(trimmed);
+      if (res.success) {
+        setIsSuccess(true);
+        setTimeout(() => {
+          onClose();
+          if (onSuccess) {
+            onSuccess();
+          } else if (targetPath && targetPath !== '/pos') {
+            navigate(targetPath);
+          }
+        }, 300);
+      } else {
+        setError(res.error || 'Incorrect Firebase Admin Password. Please try again.');
+        setPassword('');
+        inputRef.current?.focus();
+      }
+    } catch (err: any) {
+      setError(err?.message || 'Authentication error. Please try again.');
+    } finally {
+      setIsVerifying(false);
     }
   };
 
@@ -86,7 +95,7 @@ export const AdminSectionLockModal: React.FC<AdminSectionLockModalProps> = ({
                 Admin Password Required
               </h3>
               <p className="text-[11px] text-[#F5B51B] font-medium">
-                Confidential Store Section — Authorized Personnel Only
+                Store Owner Authorization Required
               </p>
             </div>
           </div>
@@ -101,128 +110,95 @@ export const AdminSectionLockModal: React.FC<AdminSectionLockModalProps> = ({
           </button>
         </div>
 
-        {/* Content Body */}
+        {/* Modal Form */}
         <form onSubmit={handleSubmit} className="p-5 sm:p-6 space-y-4">
-          {/* Target Section Badge */}
-          <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 flex items-start gap-3">
-            <ShieldAlert className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
-            <div className="text-xs">
-              <p className="text-slate-600">Target Confidential Section:</p>
-              <p className="font-black text-slate-900 text-sm mt-0.5">{targetName}</p>
-              <p className="text-slate-500 mt-1 leading-relaxed">
-                Is section mein confidential financial data, accounts aur record hain. Access karne ke liye Admin Password darj karein.
-              </p>
-            </div>
+          <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 text-center">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-0.5">
+              Accessing
+            </span>
+            <span className="text-sm font-extrabold text-[#071F49] block">
+              {targetName}
+            </span>
+            <p className="text-[11px] text-slate-500 mt-1">
+              Enter your Firebase store administrator password to unlock all management and financial sections.
+            </p>
           </div>
 
-          {/* Default PIN Alert */}
-          {defaultPinNotice && (
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-2.5 text-[11px] text-blue-900 flex items-center justify-between">
-              <span>Default PIN: <strong className="font-mono font-bold">1234</strong></span>
-              <button
-                type="button"
-                onClick={() => {
-                  onClose();
-                  openChangePasswordModal();
-                }}
-                className="font-bold underline text-blue-700 hover:text-blue-900 cursor-pointer"
-              >
-                Change PIN
-              </button>
-            </div>
-          )}
-
-          {/* Error Message */}
           {error && (
-            <div className="bg-red-50 border border-red-200 text-red-700 text-xs p-3 rounded-xl flex items-center gap-2">
-              <AlertTriangle className="w-4 h-4 shrink-0 text-red-600" />
+            <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-800 font-semibold flex items-center gap-2">
+              <Lock className="w-4 h-4 text-rose-600 shrink-0" />
               <span>{error}</span>
             </div>
           )}
 
-          {/* Password Input */}
-          <div className="space-y-1.5">
-            <label className="block text-xs font-bold text-slate-800">
-              Admin Password / PIN <span className="text-red-500">*</span>
+          {isSuccess && (
+            <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-800 font-semibold flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+              <span>Admin access granted! Unlocking sections...</span>
+            </div>
+          )}
+
+          <div>
+            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+              Admin Password
             </label>
             <div className="relative">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
-                <KeyRound className="w-4 h-4" />
-              </div>
               <input
                 ref={inputRef}
                 type={showPassword ? 'text' : 'password'}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="Enter Admin Password..."
-                disabled={isSuccess}
-                className="w-full pl-9 pr-10 py-2.5 bg-white border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-[#071F49] focus:border-transparent outline-none transition-all font-mono tracking-wider"
+                placeholder="Enter Firebase Admin Password..."
+                disabled={isVerifying || isSuccess}
+                className="w-full pl-3.5 pr-11 py-2.5 text-sm font-mono border border-slate-300 rounded-xl focus:ring-2 focus:ring-[#071F49] focus:outline-none transition"
+                autoComplete="current-password"
               />
               <button
                 type="button"
-                onClick={() => setShowPassword((prev) => !prev)}
-                className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 transition-colors"
+                onClick={() => setShowPassword(!showPassword)}
+                tabIndex={-1}
+                className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600 cursor-pointer"
               >
                 {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
             </div>
           </div>
 
-          {/* Session remember option */}
-          <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer select-none">
-            <input
-              type="checkbox"
-              checked={rememberSession}
-              onChange={(e) => setRememberSession(e.target.checked)}
-              className="w-4 h-4 text-[#071F49] rounded border-slate-300 focus:ring-[#071F49]"
-            />
-            <span>Keep unlocked for this session</span>
-          </label>
-
-          {/* Action Buttons */}
-          <div className="flex items-center justify-between pt-2">
+          <div className="flex items-center gap-2 pt-2">
             <button
               type="button"
-              onClick={() => {
-                onClose();
-                openChangePasswordModal();
-              }}
-              className="text-xs text-slate-500 hover:text-[#071F49] font-medium underline cursor-pointer"
+              onClick={onClose}
+              disabled={isVerifying}
+              className="flex-1 py-2.5 px-4 rounded-xl text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 transition cursor-pointer"
             >
-              Change Password
+              Cancel (Return to POS)
             </button>
 
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={onClose}
-                className="px-4 py-2 border border-slate-300 rounded-xl text-slate-700 hover:bg-slate-100 font-semibold text-xs sm:text-sm transition-colors cursor-pointer"
-              >
-                Cancel
-              </button>
-
-              <button
-                type="submit"
-                disabled={isSuccess}
-                className="px-5 py-2 bg-[#071F49] hover:bg-[#0c2f6d] text-white rounded-xl font-bold text-xs sm:text-sm flex items-center gap-2 shadow-md active:scale-95 transition-all cursor-pointer disabled:opacity-50"
-              >
-                {isSuccess ? (
-                  <>
-                    <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                    <span>Unlocked!</span>
-                  </>
-                ) : (
-                  <>
-                    <Lock className="w-4 h-4 text-[#F5B51B]" />
-                    <span>Unlock Section</span>
-                  </>
-                )}
-              </button>
-            </div>
+            <button
+              type="submit"
+              disabled={isVerifying || isSuccess}
+              className="flex-1 py-2.5 px-4 rounded-xl text-xs font-bold text-[#071F49] bg-[#F5B51B] hover:bg-[#F8CE4E] shadow-md transition flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+            >
+              {isVerifying ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin text-[#071F49]" />
+                  <span>Verifying...</span>
+                </>
+              ) : isSuccess ? (
+                <>
+                  <CheckCircle2 className="w-4 h-4 text-[#071F49]" />
+                  <span>Unlocked!</span>
+                </>
+              ) : (
+                <>
+                  <span>Unlock Admin Access</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </>
+              )}
+            </button>
           </div>
         </form>
       </div>
     </div>
   );
 };
-

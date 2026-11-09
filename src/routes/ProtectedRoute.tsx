@@ -12,7 +12,8 @@ export const ProtectedRoute: React.FC = () => {
   }
 
   if (!isAuthenticated) {
-    return <Navigate to="/login" state={{ from: location }} replace />;
+    const returnPath = location.pathname === '/' ? '/pos' : location.pathname;
+    return <Navigate to="/login" state={{ from: { pathname: returnPath } }} replace />;
   }
 
   return <Outlet />;

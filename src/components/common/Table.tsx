@@ -43,7 +43,7 @@ export function Table<T>({
                 <th
                   key={col.key}
                   scope="col"
-                  className={`px-4 sm:px-6 py-3.5 whitespace-nowrap ${
+                  className={`px-3 sm:px-6 py-3 sm:py-3.5 whitespace-nowrap ${
                     col.align === 'right'
                       ? 'text-right'
                       : col.align === 'center'
@@ -88,7 +88,7 @@ export function Table<T>({
                   {columns.map((col) => (
                     <td
                       key={col.key}
-                      className={`px-4 sm:px-6 py-4 whitespace-nowrap text-slate-700 ${
+                      className={`px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-slate-700 ${
                         col.align === 'right'
                           ? 'text-right'
                           : col.align === 'center'

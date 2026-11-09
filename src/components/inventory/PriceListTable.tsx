@@ -8,7 +8,6 @@ import {
   RefreshCw,
   Coins,
   Package,
-  Percent,
   SlidersHorizontal,
   BookOpen,
 } from 'lucide-react';
@@ -117,26 +116,16 @@ export const PriceListTable: React.FC<PriceListTableProps> = ({
   const stats = useMemo(() => {
     const totalCount = products.length;
     let totalStockValuation = 0;
-    let totalMrpSum = 0;
-    let discWeightedSum = 0;
 
     for (const p of products) {
       const stock = Number(p.currentStock) || 0;
       const cost = Number(p.costPrice) || 0;
-      const mrp = Number(p.retailPrice || p.mrp || p.originalPrice) || 0;
-      const disc = Number(p.publisherDiscountPercent) || 0;
-
       totalStockValuation += stock * cost;
-      totalMrpSum += mrp;
-      discWeightedSum += disc;
     }
-
-    const avgDisc = totalCount > 0 ? Math.round(discWeightedSum / totalCount) : 0;
 
     return {
       totalCount,
       totalStockValuation,
-      avgDisc,
     };
   }, [products]);
 
@@ -214,9 +203,6 @@ export const PriceListTable: React.FC<PriceListTableProps> = ({
           <td style="padding: 6px 8px; text-align: right; font-family: monospace; font-weight: bold; color: #071F49;">
             Rs. ${Number(p.retailPrice || p.mrp || 0).toLocaleString()}
           </td>
-          <td style="padding: 6px 8px; text-align: center; font-weight: bold; color: #047857;">
-            ${p.publisherDiscountPercent ?? 0}%
-          </td>
           <td style="padding: 6px 8px; text-align: right; font-family: monospace; color: #334155;">
             Rs. ${Number(p.costPrice || 0).toLocaleString()}
           </td>
@@ -268,7 +254,6 @@ export const PriceListTable: React.FC<PriceListTableProps> = ({
                 <th>Item / Book Title</th>
                 <th style="width: 90px;">SKU</th>
                 <th style="width: 80px; text-align: right;">MRP (Rs.)</th>
-                <th style="width: 60px; text-align: center;">Pub Disc</th>
                 <th style="width: 80px; text-align: right;">Cost (Rs.)</th>
                 <th style="width: 85px; text-align: right;">Wholesale</th>
               </tr>
@@ -345,21 +330,6 @@ export const PriceListTable: React.FC<PriceListTableProps> = ({
         return (
           <span className="font-mono text-sm font-black text-[#071F49]">
             {formatCurrency(mrp)}
-          </span>
-        );
-      },
-    },
-    {
-      key: 'publisherDiscount',
-      header: 'Pub. Disc %',
-      align: 'center',
-      render: (row) => {
-        const disc = typeof row.publisherDiscountPercent === 'number'
-          ? row.publisherDiscountPercent
-          : (row.retailPrice > 0 ? Math.max(0, Math.round(((row.retailPrice - row.costPrice) / row.retailPrice) * 100)) : 0);
-        return (
-          <span className="inline-flex items-center text-xs font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 rounded-full">
-            {disc}%
           </span>
         );
       },
@@ -488,7 +458,7 @@ export const PriceListTable: React.FC<PriceListTableProps> = ({
       </div>
 
       {/* 2. Top Summary Indicators */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div className="p-3.5 bg-white border border-slate-200/90 rounded-2xl shadow-xs flex items-center justify-between">
           <div>
             <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
@@ -500,20 +470,6 @@ export const PriceListTable: React.FC<PriceListTableProps> = ({
           </div>
           <div className="p-2.5 bg-slate-100 text-[#071F49] rounded-xl">
             <Package className="w-4 h-4" />
-          </div>
-        </div>
-
-        <div className="p-3.5 bg-white border border-slate-200/90 rounded-2xl shadow-xs flex items-center justify-between">
-          <div>
-            <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-              Avg. Publisher Discount
-            </span>
-            <div className="text-xl font-black text-emerald-700 font-mono mt-0.5">
-              {stats.avgDisc}%
-            </div>
-          </div>
-          <div className="p-2.5 bg-emerald-50 text-emerald-700 rounded-xl">
-            <Percent className="w-4 h-4" />
           </div>
         </div>
 
