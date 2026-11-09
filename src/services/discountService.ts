@@ -103,19 +103,33 @@ export const resolveEffectivePrice = (
   }
 
   // 2. Agreed Base Customer Discount (Marketshop)
-  if (customer.type === 'marketshop' && (customer.discountPercentage || 0) > 0) {
-    const basePct = Math.min(100, Math.max(0, customer.discountPercentage || 0));
-    const base = standardRetail;
-    const discountedRate = Math.round(base * (1 - basePct / 100) * 100) / 100;
-    const savings = Math.max(0, base - discountedRate);
+  if (customer.type === 'marketshop') {
+    if (product.marketShopPrice && product.marketShopPrice > 0) {
+      const savings = Math.max(0, standardRetail - product.marketShopPrice);
+      const pct = standardRetail > 0 ? Math.round((savings / standardRetail) * 1000) / 10 : 0;
+      return {
+        effectivePrice: product.marketShopPrice,
+        appliedRuleType: 'standard_wholesale',
+        discountRatePercent: pct,
+        savingsPerUnit: savings,
+        basePrice: standardRetail,
+      };
+    }
 
-    return {
-      effectivePrice: discountedRate,
-      appliedRuleType: 'customer_base',
-      discountRatePercent: basePct,
-      savingsPerUnit: savings,
-      basePrice: base,
-    };
+    if ((customer.discountPercentage || 0) > 0) {
+      const basePct = Math.min(100, Math.max(0, customer.discountPercentage || 0));
+      const base = standardRetail;
+      const discountedRate = Math.round(base * (1 - basePct / 100) * 100) / 100;
+      const savings = Math.max(0, base - discountedRate);
+
+      return {
+        effectivePrice: discountedRate,
+        appliedRuleType: 'customer_base',
+        discountRatePercent: basePct,
+        savingsPerUnit: savings,
+        basePrice: base,
+      };
+    }
   }
 
   // 3. Customer Type Default Rate

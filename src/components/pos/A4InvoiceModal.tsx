@@ -171,64 +171,64 @@ export const A4InvoiceModal: React.FC<A4InvoiceModalProps> = ({
         {/* Invoice Canvas Scroll Area */}
         <div className="flex-1 overflow-y-auto p-4 sm:p-6 md:p-8 bg-slate-100 flex justify-center print:p-0 print:m-0 print:bg-white print:overflow-visible">
           {/* ========================================================================= */}
-          {/* OPTION 1: THERMAL 80MM RECEIPT MACHINE FORMAT */}
+          {/* OPTION 1: THERMAL 80MM RECEIPT MACHINE FORMAT (HIGH-CONTRAST DARK BLACK) */}
           {/* ========================================================================= */}
           {paperSize === 'thermal' ? (
             <div
               id="thermal-receipt-sheet"
-              className="bg-white text-black font-mono mx-auto shadow-md border border-slate-300 w-[80mm] max-w-[80mm] p-3 text-xs leading-tight print:shadow-none print:border-none print:m-0"
-              style={{ boxSizing: 'border-box' }}
+              className="bg-white text-black font-mono mx-auto shadow-md border-2 border-black w-[80mm] max-w-[80mm] p-3 text-xs leading-tight print:shadow-none print:border-none print:m-0"
+              style={{ boxSizing: 'border-box', color: '#000000' }}
             >
               {/* Thermal Shop Header */}
-              <div className="text-center pb-2 mb-2">
+              <div className="text-center pb-2 mb-2 text-black">
                 <h2 className="text-base font-black tracking-wider uppercase text-black">
                   SADIQ BOOK AGENCY
                 </h2>
-                <p className="text-[10px] text-slate-800 uppercase font-semibold">
+                <p className="text-[10px] text-black uppercase font-bold">
                   Books • Notebooks • Registers • Stationery
                 </p>
-                <p className="text-[10px] text-slate-700">
+                <p className="text-[10px] text-black font-semibold">
                   Udyana Market Mingora Swat
                 </p>
-                <p className="text-[10px] text-slate-800 font-bold">
+                <p className="text-[10px] text-black font-bold">
                   Tel: 03449633526 | 03425822259
                 </p>
-                <div className="border-b border-dashed border-black my-2" />
+                <div className="border-b-2 border-dashed border-black my-2" />
                 <div className="text-[11px] font-black uppercase tracking-wider text-black">
                   {isCreditSale ? 'CREDIT MEMO (KHATA BILL)' : 'CASH SALE RECEIPT'}
                 </div>
-                <div className="border-b border-dashed border-black my-2" />
+                <div className="border-b-2 border-dashed border-black my-2" />
               </div>
 
               {/* Thermal Bill Meta */}
-              <div className="text-[11px] space-y-0.5 mb-2">
+              <div className="text-[11px] space-y-0.5 mb-2 text-black font-semibold">
                 <div className="flex justify-between">
-                  <span>Bill No:</span>
-                  <span className="font-bold">{formattedInvoiceNo}</span>
+                  <span className="font-bold">Bill No:</span>
+                  <span className="font-black font-mono">{formattedInvoiceNo}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span>Date:</span>
-                  <span>{formatDate(sale.saleDate)}</span>
+                  <span className="font-bold">Date:</span>
+                  <span className="font-bold">{formatDate(sale.saleDate)}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span>Customer:</span>
-                  <span className="font-bold truncate max-w-[130px]">
+                  <span className="font-bold">Customer:</span>
+                  <span className="font-black truncate max-w-[130px]">
                     {sale.customerName || 'Walk-in Cash Customer'}
                   </span>
                 </div>
                 {sale.customerType && (
                   <div className="flex justify-between">
-                    <span>Party Type:</span>
-                    <span className="capitalize font-semibold">{sale.customerType}</span>
+                    <span className="font-bold">Party Type:</span>
+                    <span className="capitalize font-black">{sale.customerType}</span>
                   </div>
                 )}
               </div>
 
-              <div className="border-b border-dashed border-black my-2" />
+              <div className="border-b-2 border-dashed border-black my-2" />
 
               {/* Thermal Items List */}
-              <div className="space-y-1.5 text-[11px]">
-                <div className="flex justify-between font-bold border-b border-black pb-0.5">
+              <div className="space-y-1.5 text-[11px] text-black">
+                <div className="flex justify-between font-black border-b-2 border-black pb-0.5 uppercase">
                   <span>Item Description</span>
                   <span>Amount</span>
                 </div>
@@ -242,11 +242,11 @@ export const A4InvoiceModal: React.FC<A4InvoiceModalProps> = ({
                       <div className="font-bold text-black leading-snug">
                         {idx + 1}. {item.productName}
                       </div>
-                      <div className="flex justify-between text-slate-800 text-[10px] pl-2">
+                      <div className="flex justify-between text-black font-semibold text-[10px] pl-2">
                         <span>
                           {item.quantity} x Rs. {unitRate.toFixed(2)}
                         </span>
-                        <span className="font-bold text-black font-mono">
+                        <span className="font-black text-black font-mono">
                           Rs. {item.lineTotal.toFixed(2)}
                         </span>
                       </div>
@@ -255,47 +255,47 @@ export const A4InvoiceModal: React.FC<A4InvoiceModalProps> = ({
                 })}
               </div>
 
-              <div className="border-b border-dashed border-black my-2" />
+              <div className="border-b-2 border-dashed border-black my-2" />
 
-              {/* Financial Calculation (Confidential discount percentage is strictly hidden) */}
-              <div className="text-[11px] space-y-1">
+              {/* Financial Calculation (Pure solid black for dark thermal printing) */}
+              <div className="text-[11px] space-y-1 text-black font-semibold">
                 <div className="flex justify-between">
                   <span>Total Items / Qty:</span>
-                  <span className="font-bold">{totalQuantity} pcs</span>
+                  <span className="font-black">{totalQuantity} pcs</span>
                 </div>
                 <div className="flex justify-between">
                   <span>Subtotal:</span>
-                  <span className="font-mono font-semibold">Rs. {sale.subtotal.toFixed(2)}</span>
+                  <span className="font-mono font-bold">Rs. {sale.subtotal.toFixed(2)}</span>
                 </div>
                 {sale.totalDiscount > 0 && (
-                  <div className="flex justify-between font-bold text-slate-900">
+                  <div className="flex justify-between font-black text-black">
                     <span>Total Discount:</span>
                     <span className="font-mono">-Rs. {sale.totalDiscount.toFixed(2)}</span>
                   </div>
                 )}
 
-                <div className="border-b border-black my-1" />
-                <div className="flex justify-between text-xs font-black">
+                <div className="border-b-2 border-black my-1" />
+                <div className="flex justify-between text-xs font-black text-black">
                   <span>NET PAYABLE:</span>
-                  <span className="font-mono text-sm">Rs. {sale.grandTotal.toFixed(2)}</span>
+                  <span className="font-mono text-sm font-black">Rs. {sale.grandTotal.toFixed(2)}</span>
                 </div>
-                <div className="border-b border-black my-1" />
+                <div className="border-b-2 border-black my-1" />
 
                 {/* Payment Detail */}
                 <div className="flex justify-between text-[11px]">
-                  <span>Payment Mode:</span>
-                  <span className="uppercase font-bold">{sale.paymentMethod}</span>
+                  <span className="font-bold">Payment Mode:</span>
+                  <span className="uppercase font-black">{sale.paymentMethod}</span>
                 </div>
                 <div className="flex justify-between text-[11px]">
-                  <span>Paid Amount:</span>
-                  <span className="font-mono font-bold">
+                  <span className="font-bold">Paid Amount:</span>
+                  <span className="font-mono font-black">
                     Rs. {(sale.paymentApplied || 0).toFixed(2)}
                   </span>
                 </div>
                 {(sale.changeReturned || 0) > 0 && (
                   <div className="flex justify-between text-[11px]">
-                    <span>Change Returned:</span>
-                    <span className="font-mono font-bold">
+                    <span className="font-bold">Change Returned:</span>
+                    <span className="font-mono font-black">
                       Rs. {(sale.changeReturned || 0).toFixed(2)}
                     </span>
                   </div>
@@ -304,22 +304,22 @@ export const A4InvoiceModal: React.FC<A4InvoiceModalProps> = ({
                   <>
                     <div className="flex justify-between text-[11px] font-bold">
                       <span>Added to Khata:</span>
-                      <span className="font-mono">
+                      <span className="font-mono font-black">
                         Rs. {(sale.balanceAddedToCredit || 0).toFixed(2)}
                       </span>
                     </div>
                     {customerData && typeof customerData.currentBalance === 'number' && (
                       <div className="flex justify-between text-[11px] font-bold">
                         <span>Current Khata Balance:</span>
-                        <span className="font-mono">
+                        <span className="font-mono font-black">
                           Rs. {customerData.currentBalance.toFixed(2)}
                         </span>
                       </div>
                     )}
                     {sale.dueDate && (
                       <div className="flex justify-between text-[10px]">
-                        <span>Payment Due Date:</span>
-                        <span>{formatDate(sale.dueDate)}</span>
+                        <span className="font-bold">Payment Due Date:</span>
+                        <span className="font-bold">{formatDate(sale.dueDate)}</span>
                       </div>
                     )}
                   </>
@@ -327,12 +327,12 @@ export const A4InvoiceModal: React.FC<A4InvoiceModalProps> = ({
               </div>
 
               {/* Thermal Receipt Footer */}
-              <div className="text-center pt-3 border-t border-dashed border-black mt-3 space-y-1">
-                <p className="text-[10px] font-bold">THANK YOU FOR YOUR VISIT!</p>
-                <p className="text-[9px] text-slate-600">
+              <div className="text-center pt-3 border-t-2 border-dashed border-black mt-3 space-y-1 text-black">
+                <p className="text-[10px] font-black uppercase">THANK YOU FOR YOUR VISIT!</p>
+                <p className="text-[9px] text-black font-semibold">
                   Computerized Thermal POS Receipt • Sadiq Book Agency
                 </p>
-                <p className="text-[8px] text-slate-500">
+                <p className="text-[8px] text-black font-bold">
                   Prices inclusive of store counter terms
                 </p>
               </div>
@@ -616,9 +616,15 @@ export const A4InvoiceModal: React.FC<A4InvoiceModalProps> = ({
           body {
             margin: 0 !important;
             padding: 0 !important;
+            background: white !important;
+            color: #000000 !important;
           }
           #thermal-receipt-sheet, #thermal-receipt-sheet * {
             visibility: visible !important;
+            color: #000000 !important;
+            border-color: #000000 !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
           }
           #thermal-receipt-sheet {
             position: absolute !important;
@@ -632,10 +638,20 @@ export const A4InvoiceModal: React.FC<A4InvoiceModalProps> = ({
             box-shadow: none !important;
             border: none !important;
             background: white !important;
-            color: black !important;
+            color: #000000 !important;
             font-family: 'Courier New', Courier, monospace, sans-serif !important;
-            font-size: 11px !important;
+            font-size: 11.5px !important;
+            font-weight: 700 !important;
             line-height: 1.25 !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+          #thermal-receipt-sheet h2,
+          #thermal-receipt-sheet strong,
+          #thermal-receipt-sheet .font-bold,
+          #thermal-receipt-sheet .font-black {
+            font-weight: 900 !important;
+            color: #000000 !important;
           }
           @page {
             size: 80mm auto;

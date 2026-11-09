@@ -24,6 +24,12 @@ import { logAuditEvent } from './auditService';
 import { updateInventorySummaryDeltas } from './summaryService';
 import { getPublisherById } from './publisherService';
 import { getSeriesById } from './seriesService';
+import {
+  matchesPublisherHierarchy,
+  matchesSeriesHierarchy,
+  matchesClassHierarchy,
+  matchesSearchTokens,
+} from '../utils/purchaseFormHelpers';
 
 export interface ProductFilters {
   classification?: ItemClassification | 'all';
@@ -114,29 +120,36 @@ export const getProductsPaginated = async (
       qConstraints.push(where('categoryId', '==', filters.categoryId));
     }
 
-    // Cursor pagination
-    if (cursorDoc) {
+    // Check if specific hierarchy or search filters are applied
+    const hasSpecificFilter = Boolean(
+      (filters.publisherId && filters.publisherId !== 'all') ||
+      (filters.seriesId && filters.seriesId !== 'all') ||
+      (filters.targetClass && filters.targetClass !== 'all') ||
+      (filters.searchTerm && filters.searchTerm.trim()) ||
+      (filters.stockStatus && filters.stockStatus !== 'all')
+    );
+
+    // Cursor pagination (for standard unfiltered browse pages)
+    if (!hasSpecificFilter && cursorDoc) {
       qConstraints.push(startAfter(cursorDoc));
     }
 
-    // Limit to page size + 1 to check hasMore without count reads
-    qConstraints.push(limit(pageSize + 1));
+    // When specific filters are applied, expand the query fetch window (up to 500)
+    // so in-memory filters don't drop matches due to premature pagination limits
+    const queryLimit = hasSpecificFilter ? 500 : (pageSize + 1);
+    qConstraints.push(limit(queryLimit));
 
     const q = query(productsRef, ...qConstraints);
     const snapshot = await getDocs(q);
 
     let docs = snapshot.docs;
-    const hasMore = docs.length > pageSize;
-    if (hasMore) {
-      docs = docs.slice(0, pageSize);
-    }
 
     let products: ProductDocument[] = docs.map((docSnap) => ({
       ...(docSnap.data() as ProductDocument),
       id: docSnap.id,
     }));
 
-    // In-memory filters for stock status & client search query (debounced)
+    // In-memory filters for stock status
     if (filters.stockStatus && filters.stockStatus !== 'all') {
       products = products.filter((p) => {
         if (filters.stockStatus === 'out_of_stock') return (p.currentStock || 0) <= 0;
@@ -146,42 +159,29 @@ export const getProductsPaginated = async (
       });
     }
 
-    // Filter by publisher
+    // Filter by publisher using intelligent ID + Name + authorOrPublisher matching
     if (filters.publisherId && filters.publisherId !== 'all') {
-      products = products.filter(
-        (p) => p.publisherId === filters.publisherId || p.publisherName === filters.publisherId
-      );
+      products = products.filter((p) => matchesPublisherHierarchy(p, filters.publisherId));
     }
 
-    // Filter by series
+    // Filter by series using intelligent ID + Name matching
     if (filters.seriesId && filters.seriesId !== 'all') {
-      products = products.filter((p) => p.seriesId === filters.seriesId);
+      products = products.filter((p) => matchesSeriesHierarchy(p, filters.seriesId));
     }
 
-    // Filter by Class
+    // Filter by Class using intelligent normalized class matching
     if (filters.targetClass && filters.targetClass !== 'all') {
-      const cls = filters.targetClass.toLowerCase().trim();
-      products = products.filter((p) => {
-        if (p.targetClass && p.targetClass.toLowerCase().trim() === cls) return true;
-        if (p.className && p.className.toLowerCase().trim() === cls) return true;
-        if (p.edition && p.edition.toLowerCase().includes(cls)) return true;
-        if (p.title && p.title.toLowerCase().includes(cls)) return true;
-        return false;
-      });
+      products = products.filter((p) => matchesClassHierarchy(p, filters.targetClass));
     }
 
+    // Multi-token search term matching across all product fields
     if (filters.searchTerm && filters.searchTerm.trim()) {
-      const term = filters.searchTerm.trim().toLowerCase();
-      products = products.filter((p) =>
-        p.title.toLowerCase().includes(term) ||
-        p.sku.toLowerCase().includes(term) ||
-        (p.barcode && p.barcode.toLowerCase().includes(term)) ||
-        (p.authorOrPublisher && p.authorOrPublisher.toLowerCase().includes(term)) ||
-        (p.categoryName && p.categoryName.toLowerCase().includes(term)) ||
-        (p.notebookSize && p.notebookSize.toLowerCase().includes(term)) ||
-        (p.notebookSheets && p.notebookSheets.toLowerCase().includes(term)) ||
-        (p.notebookGrammage && p.notebookGrammage.toLowerCase().includes(term))
-      );
+      products = products.filter((p) => matchesSearchTokens(p, filters.searchTerm!));
+    }
+
+    const hasMore = hasSpecificFilter ? false : docs.length > pageSize;
+    if (!hasSpecificFilter && hasMore) {
+      products = products.slice(0, pageSize);
     }
 
     const lastDoc = docs.length > 0 ? docs[docs.length - 1] : null;
@@ -235,6 +235,7 @@ export interface CreateProductInput {
   mrp?: number;
   publisherDiscountPercent?: number;
   wholesalePrice?: number;
+  marketShopPrice?: number;
   currentStock: number;
   lowStockThreshold: number;
   unit: string;
@@ -313,7 +314,7 @@ export const createProduct = async (
     publisherName: resolvedPublisherName,
     seriesId: resolvedSeriesId,
     seriesName: resolvedSeriesName,
-    authorOrPublisher: input.authorOrPublisher?.trim() || '',
+    authorOrPublisher: input.authorOrPublisher?.trim() || resolvedPublisherName || '',
     edition: input.edition?.trim() || '',
     targetClass: input.targetClass?.trim() || input.className?.trim() || undefined,
     className: input.targetClass?.trim() || input.className?.trim() || undefined,
@@ -326,6 +327,7 @@ export const createProduct = async (
     mrp: mrp,
     publisherDiscountPercent: pubDiscount,
     wholesalePrice: Number(input.wholesalePrice) || mrp,
+    marketShopPrice: input.marketShopPrice !== undefined ? Number(input.marketShopPrice) : (Number(input.wholesalePrice) || mrp),
     currentStock: Number(input.currentStock) || 0,
     lowStockThreshold: Number(input.lowStockThreshold) || 5,
     unit: input.unit || 'piece',
@@ -490,6 +492,7 @@ export const updateProduct = async (
     publisherName: targetPublisherName || undefined,
     seriesId: targetSeriesId || undefined,
     seriesName: targetSeriesName || undefined,
+    authorOrPublisher: updates.authorOrPublisher !== undefined ? (updates.authorOrPublisher.trim() || targetPublisherName || '') : (existing.authorOrPublisher || targetPublisherName || ''),
     ...(updates.targetClass !== undefined && {
       targetClass: updates.targetClass.trim() || undefined,
       className: updates.targetClass.trim() || undefined,
@@ -507,6 +510,7 @@ export const updateProduct = async (
     mrp: mrp,
     publisherDiscountPercent: pubDiscount,
     wholesalePrice: updates.wholesalePrice !== undefined ? Number(updates.wholesalePrice) : (existing.wholesalePrice || mrp),
+    marketShopPrice: updates.marketShopPrice !== undefined ? Number(updates.marketShopPrice) : (existing.marketShopPrice || existing.wholesalePrice || mrp),
     currentStock: newCurrentStock,
     lowStockThreshold: newLowThreshold,
     isLowStock,

@@ -67,8 +67,9 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
   const [edition, setEdition] = useState('');
   const [retailPrice, setRetailPrice] = useState<number | ''>(0); // Original Price / MRP
   const [publisherDiscountPercent, setPublisherDiscountPercent] = useState<number | ''>(0); // Publisher Discount %
-  const [costPrice, setCostPrice] = useState<number | ''>(0); // Actual Purchase Cost (auto-calculated)
-  const [wholesalePrice, setWholesalePrice] = useState<number | ''>(0); // Optional backward-compatible
+  const [costPrice, setCostPrice] = useState<number | ''>(0); // Actual Purchase Cost
+  const [wholesalePrice, setWholesalePrice] = useState<number | ''>(0); // Wholesale Price
+  const [marketShopPrice, setMarketShopPrice] = useState<number | ''>(0); // Market Shop Price
   const [currentStock, setCurrentStock] = useState<number | ''>(0);
   const [lowStockThreshold, setLowStockThreshold] = useState<number | ''>(5);
   const [unit, setUnit] = useState('piece');
@@ -147,6 +148,7 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
       setPublisherDiscountPercent(initialPubDisc);
       setCostPrice(initialData.costPrice);
       setWholesalePrice(initialData.wholesalePrice || initialMrp);
+      setMarketShopPrice(initialData.marketShopPrice || initialData.wholesalePrice || initialMrp);
       setCurrentStock(initialData.currentStock);
       setLowStockThreshold(initialData.lowStockThreshold);
       setUnit(initialData.unit || 'piece');
@@ -173,6 +175,7 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
       setPublisherDiscountPercent(0);
       setCostPrice(0);
       setWholesalePrice(0);
+      setMarketShopPrice(0);
       setCurrentStock(0);
       setLowStockThreshold(5);
       setUnit('piece');
@@ -318,12 +321,23 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
       }
     }
 
+    const isBook = classification === 'book';
     const numMrp = Number(retailPrice) || 0;
     const numPubDisc =
       typeof publisherDiscountPercent === 'number'
         ? Math.max(0, Math.min(100, publisherDiscountPercent))
         : 0;
-    const numActualCost = Math.round(numMrp * (1 - numPubDisc / 100) * 100) / 100;
+    
+    // For books: Cost is calculated from MRP * (1 - Pub Disc % / 100)
+    // For non-books: Cost is directly entered Purchase Price
+    const numActualCost = isBook
+      ? Math.round(numMrp * (1 - numPubDisc / 100) * 100) / 100
+      : Number(costPrice) || 0;
+
+    const finalRetail = numMrp;
+    const finalWholesale = wholesalePrice !== '' && Number(wholesalePrice) > 0 ? Number(wholesalePrice) : finalRetail;
+    const finalMarketShop = marketShopPrice !== '' && Number(marketShopPrice) > 0 ? Number(marketShopPrice) : finalWholesale;
+    const finalPubDisc = isBook ? numPubDisc : 0;
 
     const payload: CreateProductInput = {
       title: title.trim(),
@@ -339,16 +353,17 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
       notebookSize: isNotebookOrRegister ? (notebookSize.trim() || undefined) : undefined,
       notebookSheets: isNotebookOrRegister ? (notebookSheets.trim() || undefined) : undefined,
       notebookGrammage: isNotebookOrRegister ? (notebookGrammage.trim() || undefined) : undefined,
-      authorOrPublisher: authorOrPublisher.trim(),
+      authorOrPublisher: authorOrPublisher.trim() || (isNotebookOrRegister ? '' : (publisherName.trim() || '')),
       edition: edition.trim(),
       targetClass: targetClass.trim() || undefined,
       className: targetClass.trim() || undefined,
       costPrice: numActualCost,
-      retailPrice: numMrp,
-      originalPrice: numMrp,
-      mrp: numMrp,
-      publisherDiscountPercent: numPubDisc,
-      wholesalePrice: Number(wholesalePrice) || numMrp,
+      retailPrice: finalRetail,
+      originalPrice: finalRetail,
+      mrp: finalRetail,
+      publisherDiscountPercent: finalPubDisc,
+      wholesalePrice: finalWholesale,
+      marketShopPrice: finalMarketShop,
       currentStock: Number(currentStock) || 0,
       lowStockThreshold: Number(lowStockThreshold) || 5,
       unit,
@@ -744,60 +759,140 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
           />
         </div>
 
-        {/* Pricing Section: MRP, Publisher Discount %, and Actual Purchase Cost */}
-        <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
-          <div className="flex items-center justify-between">
-            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700">
-              Pricing & Publisher Cost (PKR)
-            </h4>
-            <span className="text-[11px] text-slate-500 font-medium">
-              Formula: MRP × (1 − Publisher Disc % / 100)
-            </span>
+        {/* Dynamic Pricing Section: Books (MRP + Publisher Disc %) vs Notebooks/Stationery (Purchase Price + Customer Sale Rates) */}
+        {classification === 'book' ? (
+          <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
+            <div className="flex items-center justify-between">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700">
+                Book Pricing & Publisher Cost (PKR)
+              </h4>
+              <span className="text-[11px] text-slate-500 font-medium">
+                Formula: MRP × (1 − Publisher Disc % / 100)
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div>
+                <Input
+                  label="Original Price / MRP (PKR) *"
+                  type="number"
+                  min="0"
+                  step="any"
+                  value={retailPrice}
+                  onChange={(e) =>
+                    handleMrpChange(e.target.value === '' ? '' : parseFloat(e.target.value))
+                  }
+                  required
+                />
+              </div>
+
+              <div>
+                <Input
+                  label="Publisher Discount %"
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="0.1"
+                  placeholder="e.g. 50"
+                  value={publisherDiscountPercent}
+                  onChange={(e) =>
+                    handlePublisherDiscountChange(
+                      e.target.value === '' ? '' : parseFloat(e.target.value)
+                    )
+                  }
+                />
+              </div>
+
+              <div>
+                <Input
+                  label="Actual Purchase Cost (PKR)"
+                  type="number"
+                  value={costPrice}
+                  disabled
+                  helperText="Auto-computed purchase rate"
+                />
+              </div>
+            </div>
           </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div>
-              <Input
-                label="Original Price / MRP (PKR)"
-                type="number"
-                min="0"
-                step="any"
-                value={retailPrice}
-                onChange={(e) =>
-                  handleMrpChange(e.target.value === '' ? '' : parseFloat(e.target.value))
-                }
-                required
-              />
+        ) : (
+          <div className="p-4 bg-amber-50/60 border border-amber-200 rounded-xl space-y-3">
+            <div className="flex items-center justify-between">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-[#071F49]">
+                Item Pricing (Purchase Cost & Customer Sale Rates)
+              </h4>
+              <span className="text-[11px] text-amber-900 font-medium">
+                No MRP/Discount: Set your purchase cost and custom selling rates
+              </span>
             </div>
 
-            <div>
-              <Input
-                label="Publisher Discount %"
-                type="number"
-                min="0"
-                max="100"
-                step="0.1"
-                placeholder="e.g. 50"
-                value={publisherDiscountPercent}
-                onChange={(e) =>
-                  handlePublisherDiscountChange(
-                    e.target.value === '' ? '' : parseFloat(e.target.value)
-                  )
-                }
-              />
-            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+              <div>
+                <Input
+                  label="Purchase Price (Cost) (PKR) *"
+                  type="number"
+                  min="0"
+                  step="any"
+                  placeholder="e.g. 150"
+                  value={costPrice}
+                  onChange={(e) =>
+                    setCostPrice(e.target.value === '' ? '' : parseFloat(e.target.value))
+                  }
+                  helperText="Supplier / dealer purchase rate"
+                  required
+                />
+              </div>
 
-            <div>
-              <Input
-                label="Actual Purchase Cost (PKR)"
-                type="number"
-                value={costPrice}
-                disabled
-                helperText="Auto-computed purchase rate"
-              />
+              <div>
+                <Input
+                  label="Retail / Parchon Rate (PKR) *"
+                  type="number"
+                  min="0"
+                  step="any"
+                  placeholder="e.g. 200"
+                  value={retailPrice}
+                  onChange={(e) => {
+                    const val = e.target.value === '' ? '' : parseFloat(e.target.value);
+                    setRetailPrice(val);
+                    if (wholesalePrice === 0 || wholesalePrice === '') setWholesalePrice(val);
+                    if (marketShopPrice === 0 || marketShopPrice === '') setMarketShopPrice(val);
+                  }}
+                  helperText="Counter cash customer price"
+                  required
+                />
+              </div>
+
+              <div>
+                <Input
+                  label="Wholesale Rate (PKR)"
+                  type="number"
+                  min="0"
+                  step="any"
+                  placeholder="e.g. 175"
+                  value={wholesalePrice}
+                  onChange={(e) =>
+                    setWholesalePrice(e.target.value === '' ? '' : parseFloat(e.target.value))
+                  }
+                  helperText="Bulk wholesale dealer price"
+                />
+              </div>
+
+              <div>
+                <Input
+                  label="Market Shop Rate (PKR)"
+                  type="number"
+                  min="0"
+                  step="any"
+                  placeholder="e.g. 180"
+                  value={marketShopPrice}
+                  onChange={(e) =>
+                    setMarketShopPrice(e.target.value === '' ? '' : parseFloat(e.target.value))
+                  }
+                  helperText="Market bookstore / partner rate"
+                />
+              </div>
             </div>
           </div>
-        </div>
+        )}
 
         {/* Inventory Stock & Shelf Location */}
         <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">

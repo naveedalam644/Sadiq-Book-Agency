@@ -746,6 +746,52 @@ export const usePOSCart = (options: UsePOSCartOptions = {}) => {
     return { success: true };
   }, [lockStatus, items, session, customerType, customer, notes, saveCartToStorage]);
 
+  const updateItemPrice = useCallback((productId: string, newPrice: number): CartOperationResult => {
+    setCartError(null);
+
+    if (lockStatus !== 'owner') {
+      const err = lockStatus === 'pending'
+        ? 'Register lock acquisition is in progress. Please wait...'
+        : lockStatus === 'unsupported'
+        ? 'Register operations are disabled because Web Locks API is unavailable.'
+        : 'Register is in read-only mode.';
+      setCartError(err);
+      return { success: false, error: err };
+    }
+
+    const index = items.findIndex((i) => i.productId === productId);
+    if (index < 0) {
+      const err = 'Item not found in cart.';
+      setCartError(err);
+      return { success: false, error: err };
+    }
+
+    const item = items[index];
+    const sanitizedPrice = Math.max(0, roundMoney(Number(newPrice) || 0));
+    const lineTotal = roundMoney(sanitizedPrice * item.quantity);
+
+    const base = item.unitPrice > 0 ? item.unitPrice : sanitizedPrice;
+    const discountAmount = Math.max(0, roundMoney(base - sanitizedPrice));
+    const discountRate = base > 0 ? Math.round((discountAmount / base) * 1000) / 10 : 0;
+
+    const updatedItem: POSCartItem = {
+      ...item,
+      effectivePrice: sanitizedPrice,
+      discountAmount,
+      discountRate,
+      lineTotal,
+      isManualDiscount: true,
+      appliedRuleType: 'manual_override',
+    };
+
+    const updatedItems = [...items];
+    updatedItems[index] = updatedItem;
+
+    setItems(updatedItems);
+    saveCartToStorage(session, customerType, customer, updatedItems, notes);
+    return { success: true };
+  }, [lockStatus, items, session, customerType, customer, notes, saveCartToStorage]);
+
   const applyGlobalDiscount = useCallback((discountRate: number): CartOperationResult => {
     setCartError(null);
 
@@ -968,6 +1014,7 @@ export const usePOSCart = (options: UsePOSCartOptions = {}) => {
     addSyllabusSet,
     updateQuantity,
     updateItemDiscount,
+    updateItemPrice,
     applyGlobalDiscount,
     applyGlobalDiscountAmount,
     removeItem,

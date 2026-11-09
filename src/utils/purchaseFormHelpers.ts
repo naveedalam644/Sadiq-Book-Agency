@@ -31,6 +31,7 @@ export const CORE_CATEGORIES = [
 export const ITEM_CLASSIFICATIONS: Array<{ value: ItemClassification; label: string }> = [
   { value: 'book', label: 'Book' },
   { value: 'notebook', label: 'Notebook' },
+  { value: 'register', label: 'Register' },
   { value: 'stationery', label: 'Stationery' },
   { value: 'general', label: 'General' },
 ];
@@ -58,18 +59,277 @@ export const getUniqueAuthorsOrPublishers = (products: ProductDocument[]): strin
 };
 
 /**
+ * Normalizes class strings for matching: strips spaces, slashes, and punctuation.
+ * e.g. "Play Group" -> "playgroup", "Prep / KG" -> "prepkg"
+ */
+export const normalizeClassString = (val?: string): string => {
+  if (!val) return '';
+  return val.toLowerCase().replace(/[^a-z0-9]/g, '');
+};
+
+/**
+ * Extracts academic class number (1 through 12) from string.
+ * e.g. "Class 9" -> 9, "9th" -> 9, "Class 10" -> 10, "10" -> 10
+ */
+export const extractClassNumber = (val?: string): number | null => {
+  if (!val) return null;
+  const match = val.match(/\b(?:class|grade|th)?\s*([0-9]{1,2})(?:st|nd|rd|th)?\b/i) || val.match(/([0-9]{1,2})/);
+  return match ? parseInt(match[1], 10) : null;
+};
+
+/**
+ * Intelligent class hierarchy matcher handling all common academic formats:
+ * - "Play Group" vs "Playgroup" vs "PG"
+ * - "Prep / KG" vs "Prep" vs "KG" vs "Kindergarten"
+ * - "Nursery" vs "Nur"
+ * - "Class 1" through "Class 10" (strictly preventing "Class 1" from falsely matching "Class 10")
+ */
+export const matchesClassHierarchy = (product: ProductDocument, targetClass?: string): boolean => {
+  if (!targetClass || targetClass === 'all') return true;
+
+  const targetNorm = normalizeClassString(targetClass);
+  if (!targetNorm) return true;
+
+  const candidates = [
+    product.targetClass,
+    product.className,
+    product.edition,
+    product.title,
+  ].filter(Boolean) as string[];
+
+  // 1. Exact or substring match on normalized string
+  for (const c of candidates) {
+    const cNorm = normalizeClassString(c);
+    if (!cNorm) continue;
+    if (cNorm === targetNorm || cNorm.includes(targetNorm) || targetNorm.includes(cNorm)) {
+      return true;
+    }
+  }
+
+  // 2. Play Group / PG normalization
+  const isTargetPG = targetNorm.includes('playgroup') || targetNorm === 'pg';
+  if (isTargetPG) {
+    for (const c of candidates) {
+      const cNorm = normalizeClassString(c);
+      if (cNorm.includes('playgroup') || cNorm.includes('playgrp') || cNorm.includes('pg')) {
+        return true;
+      }
+    }
+  }
+
+  // 3. Prep / KG normalization
+  const isTargetPrep = targetNorm.includes('prep') || targetNorm.includes('kg');
+  if (isTargetPrep) {
+    for (const c of candidates) {
+      const cNorm = normalizeClassString(c);
+      if (cNorm.includes('prep') || cNorm.includes('kg') || cNorm.includes('kindergarten')) {
+        return true;
+      }
+    }
+  }
+
+  // 4. Nursery normalization
+  const isTargetNursery = targetNorm.includes('nursery') || targetNorm.includes('nur');
+  if (isTargetNursery) {
+    for (const c of candidates) {
+      const cNorm = normalizeClassString(c);
+      if (cNorm.includes('nursery') || cNorm.includes('nur')) {
+        return true;
+      }
+    }
+  }
+
+  // 5. Numerical class matching (Class 1 to 12)
+  const targetNum = extractClassNumber(targetClass);
+  if (targetNum !== null) {
+    for (const field of [product.targetClass, product.className, product.edition]) {
+      if (!field) continue;
+      const fieldNum = extractClassNumber(field);
+      if (fieldNum === targetNum) return true;
+    }
+    if (product.title) {
+      const titleMatches = product.title.match(new RegExp(`\\b(?:class|grade)?\\s*${targetNum}\\b`, 'i'));
+      if (titleMatches) return true;
+    }
+  }
+
+  return false;
+};
+
+/**
+ * Intelligent publisher matcher supporting ID, dedicated publisherName,
+ * and authorOrPublisher fallback across legacy and new catalog entries.
+ */
+export const matchesPublisherHierarchy = (
+  product: ProductDocument,
+  publisherFilter?: string,
+  publisherName?: string
+): boolean => {
+  if (!publisherFilter || publisherFilter === 'all') return true;
+
+  const targetId = publisherFilter.trim();
+  const targetName = (publisherName || '').trim().toLowerCase();
+
+  // 1. Direct ID match
+  if (product.publisherId && (product.publisherId === targetId || product.publisherId.toLowerCase() === targetId.toLowerCase())) {
+    return true;
+  }
+
+  const prodPubName = (product.publisherName || '').trim().toLowerCase();
+  const prodAuthorPub = (product.authorOrPublisher || '').trim().toLowerCase();
+
+  // 2. Direct name match from publisherName parameter
+  if (targetName) {
+    if (prodPubName && (prodPubName === targetName || prodPubName.includes(targetName) || targetName.includes(prodPubName))) {
+      return true;
+    }
+    if (prodAuthorPub && (prodAuthorPub === targetName || prodAuthorPub.includes(targetName) || targetName.includes(prodAuthorPub))) {
+      return true;
+    }
+  }
+
+  // 3. Fallback: targetId is itself a publisher name (legacy or name-based filters)
+  const targetIdLower = targetId.toLowerCase();
+  if (prodPubName && (prodPubName === targetIdLower || prodPubName.includes(targetIdLower) || targetIdLower.includes(prodPubName))) {
+    return true;
+  }
+  if (prodAuthorPub && (prodAuthorPub === targetIdLower || prodAuthorPub.includes(targetIdLower) || targetIdLower.includes(prodAuthorPub))) {
+    return true;
+  }
+
+  // 4. Moon Light code detection in SKU (BK-MOO / MNL)
+  if (targetName.includes('moon light') || targetName.includes('moonlight') || targetIdLower.includes('moon')) {
+    if (product.sku && (product.sku.toUpperCase().includes('MOO') || product.sku.toUpperCase().includes('MNL'))) {
+      return true;
+    }
+  }
+
+  return false;
+};
+
+export const normalizeSeriesString = (val?: string): string => {
+  if (!val) return '';
+  return val.toLowerCase().replace(/[^a-z0-9]/g, '').replace(/oo/g, 'o');
+};
+
+/**
+ * Intelligent series matcher supporting ID, seriesName, and title substring.
+ */
+export const matchesSeriesHierarchy = (
+  product: ProductDocument,
+  seriesFilter?: string,
+  seriesName?: string
+): boolean => {
+  if (!seriesFilter || seriesFilter === 'all') return true;
+
+  const targetId = seriesFilter.trim();
+  const targetName = (seriesName || '').trim().toLowerCase();
+
+  // 1. Direct ID match
+  if (product.seriesId && (product.seriesId === targetId || product.seriesId.toLowerCase() === targetId.toLowerCase())) {
+    return true;
+  }
+
+  const prodSerName = (product.seriesName || '').trim().toLowerCase();
+
+  // 2. Name match (exact, substring, or normalized)
+  if (targetName) {
+    if (prodSerName && (prodSerName === targetName || prodSerName.includes(targetName) || targetName.includes(prodSerName))) {
+      return true;
+    }
+    if (product.title && product.title.toLowerCase().includes(targetName)) {
+      return true;
+    }
+    // Normalized comparison (handling typos like eSCHOLOFY vs Eschoolify)
+    const targetNorm = normalizeSeriesString(targetName);
+    const prodNorm = normalizeSeriesString(prodSerName);
+    const titleNorm = normalizeSeriesString(product.title);
+    if (prodNorm && (prodNorm === targetNorm || prodNorm.includes(targetNorm) || targetNorm.includes(prodNorm))) {
+      return true;
+    }
+    if (titleNorm && (titleNorm.includes(targetNorm) || (targetNorm.length >= 4 && titleNorm.includes(targetNorm.slice(0, 5))))) {
+      return true;
+    }
+  }
+
+  // 3. Fallback: targetId is series name
+  const targetIdLower = targetId.toLowerCase();
+  if (prodSerName && (prodSerName === targetIdLower || prodSerName.includes(targetIdLower))) {
+    return true;
+  }
+  if (product.title && product.title.toLowerCase().includes(targetIdLower)) {
+    return true;
+  }
+  const targetIdNorm = normalizeSeriesString(targetId);
+  const titleNorm = normalizeSeriesString(product.title);
+  if (titleNorm && (titleNorm.includes(targetIdNorm) || (targetIdNorm.length >= 4 && titleNorm.includes(targetIdNorm.slice(0, 5))))) {
+    return true;
+  }
+
+  return false;
+};
+
+/**
+ * Multi-token substring search across all product properties:
+ * Every word in the query must match title, SKU, barcode, publisher, series, edition, class, etc.
+ * Supports spaced and unspaced matching (e.g. "Moonlight" matches "Moon Light", "Playgroup" matches "Play Group").
+ */
+export const matchesSearchTokens = (product: ProductDocument, searchTerm: string): boolean => {
+  const clean = searchTerm.trim().toLowerCase();
+  if (!clean) return true;
+
+  const tokens = clean.split(/\s+/).filter(Boolean);
+  if (tokens.length === 0) return true;
+
+  const rawHaystack = [
+    product.title,
+    product.sku,
+    product.barcode,
+    product.publisherName,
+    product.seriesName,
+    product.authorOrPublisher,
+    product.edition,
+    product.targetClass,
+    product.className,
+    product.categoryName,
+    product.classification,
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+
+  const compactHaystack = rawHaystack.replace(/[^a-z0-9]/g, '');
+
+  return tokens.every((token) => {
+    const compactToken = token.replace(/[^a-z0-9]/g, '');
+    return (
+      rawHaystack.includes(token) ||
+      (compactToken.length >= 3 && compactHaystack.includes(compactToken))
+    );
+  });
+};
+
+/**
  * Filter helper matching products by:
  * 1. Classification Filter
  * 2. Category Filter
  * 3. Author / Publishing House Filter
- * 4. Text Search Query (Title, SKU, Barcode, Category, Classification, Author/Publisher)
+ * 4. Dedicated Publisher Hierarchy (ID + Name)
+ * 5. Dedicated Series Hierarchy (ID + Name)
+ * 6. Academic Class Hierarchy (Playgroup, Nursery, Prep/KG, Class 1-10)
+ * 7. Multi-token text search (Title, SKU, Barcode, Edition, etc.)
  */
 export const matchesProductSearch = (
   product: ProductDocument,
   searchTerm: string,
   categoryFilter: string,
   classificationFilter: string,
-  authorOrPublisherFilter: string = 'all'
+  authorOrPublisherFilter: string = 'all',
+  publisherFilter: string = 'all',
+  seriesFilter: string = 'all',
+  classFilter: string = 'all',
+  publisherName?: string,
+  seriesName?: string
 ): boolean => {
   // 1. Classification Filter
   if (classificationFilter !== 'all' && product.classification !== classificationFilter) {
@@ -88,36 +348,36 @@ export const matchesProductSearch = (
     }
   }
 
-  // 3. Author / Publishing House Filter
+  // 3. Author / Publishing House Filter (Legacy)
   if (authorOrPublisherFilter !== 'all') {
     const targetAuthor = authorOrPublisherFilter.trim().toLowerCase();
     const prodAuthor = (product.authorOrPublisher || '').trim().toLowerCase();
-    if (prodAuthor !== targetAuthor) {
+    if (prodAuthor !== targetAuthor && !prodAuthor.includes(targetAuthor)) {
       return false;
     }
   }
 
-  // 4. Search Query: Product Name, SKU, Barcode, Category, Classification, Author/Publisher
-  const query = searchTerm.trim().toLowerCase();
-  if (!query) {
-    return true;
+  // 4. Dedicated Hierarchical Publisher Filter
+  if (!matchesPublisherHierarchy(product, publisherFilter, publisherName)) {
+    return false;
   }
 
-  const matchesName = (product.title || '').toLowerCase().includes(query);
-  const matchesSku = (product.sku || '').toLowerCase().includes(query);
-  const matchesBarcode = product.barcode ? product.barcode.toLowerCase().includes(query) : false;
-  const matchesCategory = (product.categoryName || '').toLowerCase().includes(query);
-  const matchesClassification = (product.classification || '').toLowerCase().includes(query);
-  const matchesAuthorOrPublisher = (product.authorOrPublisher || '').toLowerCase().includes(query);
+  // 5. Dedicated Hierarchical Series Filter
+  if (!matchesSeriesHierarchy(product, seriesFilter, seriesName)) {
+    return false;
+  }
 
-  return (
-    matchesName ||
-    matchesSku ||
-    matchesBarcode ||
-    matchesCategory ||
-    matchesClassification ||
-    matchesAuthorOrPublisher
-  );
+  // 6. Dedicated Hierarchical Class Filter
+  if (!matchesClassHierarchy(product, classFilter)) {
+    return false;
+  }
+
+  // 7. Multi-token text search query
+  if (!matchesSearchTokens(product, searchTerm)) {
+    return false;
+  }
+
+  return true;
 };
 
 /**

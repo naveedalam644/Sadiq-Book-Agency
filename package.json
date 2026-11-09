@@ -44,6 +44,8 @@
     "test:admin_lock": "node --experimental-strip-types tests/admin_sidebar_lock_and_cashier_mode_verification.ts",
     "test:dual_printer": "node --experimental-strip-types tests/thermal_and_a4_dual_printer_verification.ts",
     "test:inventory_hierarchy": "node --experimental-strip-types tests/inventory_hierarchy_and_login_flow_verification.ts",
+    "test:item_pricing_and_supplier_flow": "node --experimental-strip-types tests/item_pricing_and_supplier_flow_and_pos_capacity_verification.ts",
+    "test:hierarchy_search": "node --experimental-strip-types tests/hierarchy_and_search_flow_verification.ts",
     "test:emulator": "node scripts/run_emulator_tests.js",
     "preview": "vite preview"
   },

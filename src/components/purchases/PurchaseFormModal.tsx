@@ -12,6 +12,8 @@ import {
   ChevronDown,
   ChevronUp,
   Package,
+  Maximize2,
+  Minimize2,
 } from 'lucide-react';
 import { Modal } from '../common/Modal';
 import { Input } from '../common/Input';
@@ -21,18 +23,21 @@ import type {
   SupplierDocument,
   ProductDocument,
   ItemClassification,
+  PublisherDocument,
+  SeriesDocument,
 } from '../../types/database';
 import {
   type CreatePurchaseInput,
   checkPurchaseInvoiceUnique,
 } from '../../services/purchaseService';
 import { getProductsPaginated } from '../../services/productService';
+import { getActivePublishers } from '../../services/publisherService';
+import { getActiveSeriesByPublisher } from '../../services/seriesService';
+import { STANDARD_CLASSES } from '../../services/syllabusService';
 import { formatCurrency } from '../../utils/formatters';
 import {
   type PurchaseItemRow,
   CORE_CATEGORIES,
-  ITEM_CLASSIFICATIONS,
-  getUniqueAuthorsOrPublishers,
   matchesProductSearch,
   addOrIncrementPurchaseItem,
   updatePurchaseItemField,
@@ -76,14 +81,45 @@ export const PurchaseFormModal: React.FC<PurchaseFormModalProps> = ({
   const [feedbackMsg, setFeedbackMsg] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Search & Filter State
+  // Search & Filter State (Separate Flows: Books vs Notebooks & Other Items)
+  const [intakeMode, setIntakeMode] = useState<'books' | 'others'>('books');
   const [searchTerm, setSearchTerm] = useState('');
+  
+  // Book Mode Hierarchy: Publisher > Series > Class
+  const [publishersList, setPublishersList] = useState<PublisherDocument[]>([]);
+  const [seriesList, setSeriesList] = useState<SeriesDocument[]>([]);
+  const [publisherFilter, setPublisherFilter] = useState('all');
+  const [seriesFilter, setSeriesFilter] = useState('all');
+  const [classFilter, setClassFilter] = useState('all');
+
+  // Notebooks & Other Items Flow: Item Classification > Category
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [classificationFilter, setClassificationFilter] = useState<string>('all');
   const [authorFilter, setAuthorFilter] = useState<string>('all');
   const [availableProducts, setAvailableProducts] = useState<ProductDocument[]>(products);
   const [isSearching, setIsSearching] = useState(false);
   const [isResultsCollapsed, setIsResultsCollapsed] = useState(false);
+  const [isExpandedHeight, setIsExpandedHeight] = useState(false);
+
+  // Load Active Publishers for Books intake flow
+  useEffect(() => {
+    if (isOpen) {
+      getActivePublishers()
+        .then(setPublishersList)
+        .catch((err) => console.warn('Could not load publishers in purchase intake:', err));
+    }
+  }, [isOpen]);
+
+  // Load Series cascading for selected Publisher
+  useEffect(() => {
+    if (publisherFilter && publisherFilter !== 'all') {
+      getActiveSeriesByPublisher(publisherFilter)
+        .then(setSeriesList)
+        .catch(() => setSeriesList([]));
+    } else {
+      setSeriesList([]);
+    }
+  }, [publisherFilter]);
 
   // Auto-dismiss feedback message after 3 seconds
   const feedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -118,11 +154,6 @@ export const PurchaseFormModal: React.FC<PurchaseFormModalProps> = ({
     }
   }, [products]);
 
-  // Dynamically extract unique Author / Publishing House options from loaded products
-  const uniqueAuthors = useMemo(() => {
-    return getUniqueAuthorsOrPublishers(availableProducts);
-  }, [availableProducts]);
-
   // Reset form when modal opens
   useEffect(() => {
     if (isOpen) {
@@ -145,18 +176,12 @@ export const PurchaseFormModal: React.FC<PurchaseFormModalProps> = ({
     }
   }, [isOpen, suppliers]);
 
-  // Debounced search to fetch additional products from Firestore if not in local memory
+  // Search & load products from Firestore whenever filters or search terms change
   useEffect(() => {
     if (!isOpen) return;
+
+    let isMounted = true;
     const term = searchTerm.trim();
-    if (
-      term.length < 2 &&
-      categoryFilter === 'all' &&
-      classificationFilter === 'all' &&
-      authorFilter === 'all'
-    ) {
-      return;
-    }
 
     const timer = setTimeout(async () => {
       setIsSearching(true);
@@ -174,6 +199,9 @@ export const PurchaseFormModal: React.FC<PurchaseFormModalProps> = ({
           {
             status: 'active',
             searchTerm: term || undefined,
+            publisherId: publisherFilter !== 'all' ? publisherFilter : undefined,
+            seriesId: seriesFilter !== 'all' ? seriesFilter : undefined,
+            targetClass: classFilter !== 'all' ? classFilter : undefined,
             classification:
               classificationFilter !== 'all'
                 ? (classificationFilter as ItemClassification)
@@ -181,10 +209,10 @@ export const PurchaseFormModal: React.FC<PurchaseFormModalProps> = ({
             categoryId: categoryFilter !== 'all' ? catIdMap[categoryFilter] : undefined,
           },
           null,
-          25
+          100
         );
 
-        if (result.products.length > 0) {
+        if (isMounted && result.products.length > 0) {
           setAvailableProducts((prev) => {
             const map = new Map<string, ProductDocument>();
             prev.forEach((p) => map.set(p.id, p));
@@ -195,25 +223,72 @@ export const PurchaseFormModal: React.FC<PurchaseFormModalProps> = ({
       } catch (err) {
         console.warn('Background product search lookup failed:', err);
       } finally {
-        setIsSearching(false);
+        if (isMounted) setIsSearching(false);
       }
-    }, 350);
+    }, 250);
 
-    return () => clearTimeout(timer);
-  }, [searchTerm, categoryFilter, classificationFilter, authorFilter, isOpen]);
+    return () => {
+      isMounted = false;
+      clearTimeout(timer);
+    };
+  }, [
+    searchTerm,
+    publisherFilter,
+    seriesFilter,
+    classFilter,
+    categoryFilter,
+    classificationFilter,
+    authorFilter,
+    isOpen,
+  ]);
 
-  // In-memory filtered matching products (instant response across all 4 filters)
+  // In-memory filtered matching products: Dedicated Flow for Books vs Notebooks & Other Items
   const matchingProducts = useMemo(() => {
-    return availableProducts.filter((p) =>
-      matchesProductSearch(
-        p,
-        searchTerm,
-        categoryFilter,
-        classificationFilter,
-        authorFilter
-      )
-    );
-  }, [availableProducts, searchTerm, categoryFilter, classificationFilter, authorFilter]);
+    return availableProducts.filter((p) => {
+      if (intakeMode === 'books') {
+        // Books Flow: Must be a book, and match Publisher > Series > Class
+        const isBook = p.classification === 'book' || !p.classification;
+        if (!isBook && !searchTerm.trim()) return false;
+        const selectedPub = publishersList.find((pub) => pub.id === publisherFilter);
+        const selectedSer = seriesList.find((ser) => ser.id === seriesFilter);
+        return matchesProductSearch(
+          p,
+          searchTerm,
+          'all',
+          'all',
+          'all',
+          publisherFilter,
+          seriesFilter,
+          classFilter,
+          selectedPub?.name,
+          selectedSer?.name
+        );
+      } else {
+        // Notebooks & Other Items Flow: Must NOT be book, and match Item Classification > Category
+        const isNotBook = p.classification && p.classification !== 'book';
+        if (!isNotBook && !searchTerm.trim()) return false;
+        return matchesProductSearch(
+          p,
+          searchTerm,
+          categoryFilter,
+          classificationFilter,
+          authorFilter
+        );
+      }
+    });
+  }, [
+    availableProducts,
+    intakeMode,
+    searchTerm,
+    publisherFilter,
+    seriesFilter,
+    classFilter,
+    categoryFilter,
+    classificationFilter,
+    authorFilter,
+    publishersList,
+    seriesList,
+  ]);
 
   // Recalculate financial totals
   const subtotal = items.reduce((acc, row) => acc + (Number(row.totalCost) || 0), 0);
@@ -346,7 +421,7 @@ export const PurchaseFormModal: React.FC<PurchaseFormModalProps> = ({
       onClose={onClose}
       title="Create Purchase Order / Stock Intake"
       description="Record incoming shipment from publishing houses or paper mills. Physical stock and audit movements will update automatically."
-      size="xl"
+      size="2xl"
       footer={
         <div className="flex items-center justify-between w-full">
           <div className="text-xs font-semibold text-slate-600">
@@ -377,7 +452,7 @@ export const PurchaseFormModal: React.FC<PurchaseFormModalProps> = ({
         </div>
       }
     >
-      <form id="purchase-form" onSubmit={handleSubmit} className="space-y-5">
+      <form id="purchase-form" onSubmit={handleSubmit} className="space-y-3.5">
         {formError && (
           <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 rounded-xl text-xs font-semibold flex items-center gap-2">
             <AlertCircle className="w-4 h-4 shrink-0" />
@@ -385,8 +460,8 @@ export const PurchaseFormModal: React.FC<PurchaseFormModalProps> = ({
           </div>
         )}
 
-        {/* Supplier & Invoice Header */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        {/* Supplier & Invoice Header (Compact & Crisp) */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 bg-slate-50/80 p-2.5 rounded-xl border border-slate-200">
           <Select
             label="Supplier / Publisher *"
             value={supplierId}
@@ -416,17 +491,17 @@ export const PurchaseFormModal: React.FC<PurchaseFormModalProps> = ({
         </div>
 
         {/* Product Search & Filter Intake Panel */}
-        <div className="border border-slate-200 rounded-xl overflow-hidden bg-slate-50/70 p-3.5 space-y-3">
+        <div className="border border-slate-200 rounded-xl overflow-hidden bg-slate-50/70 p-2.5 sm:p-3 space-y-2.5">
           <div className="flex items-center justify-between flex-wrap gap-2">
             <div className="flex items-center gap-2">
-              <div className="p-1.5 bg-[#071F49] text-[#F5B51B] rounded-lg">
-                <Search className="w-4 h-4" />
+              <div className="p-1 bg-[#071F49] text-[#F5B51B] rounded-lg">
+                <Search className="w-3.5 h-3.5" />
               </div>
               <div>
-                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800 leading-none">
                   Search & Add Products to Invoice
                 </h4>
-                <p className="text-[11px] text-slate-500">
+                <p className="text-[10px] text-slate-500 mt-0.5 leading-none">
                   Lookup by Product Name, SKU, Barcode, Author / Publisher, or Category
                 </p>
               </div>
@@ -434,7 +509,7 @@ export const PurchaseFormModal: React.FC<PurchaseFormModalProps> = ({
 
             <div className="flex items-center gap-2">
               {isSearching && (
-                <span className="text-[11px] font-medium text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200 animate-pulse">
+                <span className="text-[10px] font-medium text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200 animate-pulse">
                   Searching catalog...
                 </span>
               )}
@@ -449,8 +524,41 @@ export const PurchaseFormModal: React.FC<PurchaseFormModalProps> = ({
             </div>
           </div>
 
-          {/* Search Input and Cooperative Filters */}
-          <div className="space-y-2.5">
+          {/* Intake Pathway Switcher: Books vs Notebooks & Other Items */}
+          <div className="flex items-center gap-2 border-b border-slate-200 pb-1.5">
+            <button
+              type="button"
+              onClick={() => {
+                setIntakeMode('books');
+                setSearchTerm('');
+              }}
+              className={`px-3 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                intakeMode === 'books'
+                  ? 'bg-[#071F49] text-[#F5B51B] shadow-xs'
+                  : 'bg-white text-slate-600 hover:text-slate-900 border border-slate-200'
+              }`}
+            >
+              <span>📚 Book Intake (Publisher &rarr; Series &rarr; Class)</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setIntakeMode('others');
+                setSearchTerm('');
+              }}
+              className={`px-3 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                intakeMode === 'others'
+                  ? 'bg-[#071F49] text-[#F5B51B] shadow-xs'
+                  : 'bg-white text-slate-600 hover:text-slate-900 border border-slate-200'
+              }`}
+            >
+              <span>📒 Notebook & Other Items (Classification &rarr; Category)</span>
+            </button>
+          </div>
+
+          {/* Search Input and Dynamic Filters based on Mode */}
+          <div className="space-y-2">
             {/* Search Input Box */}
             <div className="relative">
               <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
@@ -460,14 +568,18 @@ export const PurchaseFormModal: React.FC<PurchaseFormModalProps> = ({
                 type="text"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="Search by title, SKU, barcode, author, category..."
-                className="w-full pl-9 pr-8 py-2 text-xs bg-white border border-slate-300 rounded-lg placeholder:text-slate-400 text-slate-900 focus:outline-none focus:border-[#F5B51B] focus:ring-1 focus:ring-[#F5B51B] transition"
+                placeholder={
+                  intakeMode === 'books'
+                    ? "Search books by title, SKU, barcode, publisher..."
+                    : "Search notebooks, registers, stationery by title, brand, SKU..."
+                }
+                className="w-full pl-9 pr-8 py-1.5 text-xs bg-white border border-slate-300 rounded-lg placeholder:text-slate-400 text-slate-900 focus:outline-none focus:border-[#F5B51B] focus:ring-1 focus:ring-[#F5B51B] transition"
               />
               {searchTerm && (
                 <button
                   type="button"
                   onClick={() => setSearchTerm('')}
-                  className="absolute inset-y-0 right-0 pr-2.5 flex items-center text-slate-400 hover:text-slate-600"
+                  className="absolute inset-y-0 right-0 pr-2.5 flex items-center text-slate-400 hover:text-slate-600 cursor-pointer"
                   aria-label="Clear product search"
                 >
                   <X className="w-3.5 h-3.5" />
@@ -475,85 +587,188 @@ export const PurchaseFormModal: React.FC<PurchaseFormModalProps> = ({
               )}
             </div>
 
-            {/* Cooperative Filter Dropdowns */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-              {/* Category Filter */}
-              <div>
-                <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-1">
-                  Category
-                </label>
-                <select
-                  value={categoryFilter}
-                  onChange={(e) => setCategoryFilter(e.target.value)}
-                  className="w-full text-xs bg-white border border-slate-300 rounded-lg py-2 px-2.5 text-slate-800 focus:outline-none focus:border-[#F5B51B] focus:ring-1 focus:ring-[#F5B51B] transition"
-                  aria-label="Filter by Category"
-                >
-                  <option value="all">All Categories</option>
-                  {CORE_CATEGORIES.map((cat) => (
-                    <option key={cat} value={cat}>
-                      {cat}
-                    </option>
-                  ))}
-                </select>
-              </div>
+            {/* FLOW 1: Books Mode -> Publisher > Series > Class */}
+            {intakeMode === 'books' ? (
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 bg-blue-50/50 p-2 rounded-xl border border-blue-100">
+                {/* 1. Publisher */}
+                <div>
+                  <label className="block text-[10px] font-bold text-[#071F49] uppercase tracking-wider mb-0.5 flex items-center gap-1">
+                    <span className="w-3 h-3 rounded-full bg-[#071F49] text-[#F5B51B] flex items-center justify-center text-[8px] font-black">1</span>
+                    <span>Publisher</span>
+                  </label>
+                  <select
+                    value={publisherFilter}
+                    onChange={(e) => {
+                      setPublisherFilter(e.target.value);
+                      setSeriesFilter('all');
+                    }}
+                    className="w-full text-xs bg-white border border-slate-300 rounded-lg py-1 px-2 text-slate-800 focus:outline-none focus:border-[#071F49]"
+                  >
+                    <option value="all">All Publishers</option>
+                    {publishersList.map((pub) => (
+                      <option key={pub.id} value={pub.id}>
+                        {pub.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
 
-              {/* Item Classification Filter */}
-              <div>
-                <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-1">
-                  Item Classification
-                </label>
-                <select
-                  value={classificationFilter}
-                  onChange={(e) => setClassificationFilter(e.target.value)}
-                  className="w-full text-xs bg-white border border-slate-300 rounded-lg py-2 px-2.5 text-slate-800 focus:outline-none focus:border-[#F5B51B] focus:ring-1 focus:ring-[#F5B51B] transition"
-                  aria-label="Filter by Item Classification"
-                >
-                  <option value="all">All Classifications</option>
-                  {ITEM_CLASSIFICATIONS.map((cls) => (
-                    <option key={cls.value} value={cls.value}>
-                      {cls.label}
+                {/* 2. Series */}
+                <div>
+                  <label className="block text-[10px] font-bold text-[#071F49] uppercase tracking-wider mb-0.5 flex items-center gap-1">
+                    <span className="w-3 h-3 rounded-full bg-[#071F49] text-[#F5B51B] flex items-center justify-center text-[8px] font-black">2</span>
+                    <span>Series</span>
+                  </label>
+                  <select
+                    value={seriesFilter}
+                    onChange={(e) => setSeriesFilter(e.target.value)}
+                    disabled={publisherFilter === 'all'}
+                    className="w-full text-xs bg-white border border-slate-300 rounded-lg py-1 px-2 text-slate-800 focus:outline-none focus:border-[#071F49] disabled:bg-slate-100 disabled:text-slate-400"
+                  >
+                    <option value="all">
+                      {publisherFilter === 'all'
+                        ? 'Select Publisher first'
+                        : seriesList.length === 0
+                        ? 'No Series (All Titles)'
+                        : 'All Series'}
                     </option>
-                  ))}
-                </select>
-              </div>
+                    {seriesList.map((ser) => (
+                      <option key={ser.id} value={ser.id}>
+                        {ser.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
 
-              {/* Author / Publishing House Filter */}
-              <div>
-                <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-1">
-                  Author / Publishing House
-                </label>
-                <select
-                  value={authorFilter}
-                  onChange={(e) => setAuthorFilter(e.target.value)}
-                  className="w-full text-xs bg-white border border-slate-300 rounded-lg py-2 px-2.5 text-slate-800 focus:outline-none focus:border-[#F5B51B] focus:ring-1 focus:ring-[#F5B51B] transition"
-                  aria-label="Filter by Author or Publishing House"
-                >
-                  <option value="all">All Authors / Publishing Houses</option>
-                  {uniqueAuthors.map((author) => (
-                    <option key={author} value={author}>
-                      {author}
-                    </option>
-                  ))}
-                </select>
+                {/* 3. Academic Class */}
+                <div>
+                  <label className="block text-[10px] font-bold text-[#071F49] uppercase tracking-wider mb-0.5 flex items-center gap-1">
+                    <span className="w-3 h-3 rounded-full bg-[#071F49] text-[#F5B51B] flex items-center justify-center text-[8px] font-black">3</span>
+                    <span>Class</span>
+                  </label>
+                  <select
+                    value={classFilter}
+                    onChange={(e) => setClassFilter(e.target.value)}
+                    className="w-full text-xs bg-white border border-slate-300 rounded-lg py-1 px-2 text-slate-800 focus:outline-none focus:border-[#071F49]"
+                  >
+                    <option value="all">All Classes</option>
+                    {STANDARD_CLASSES.map((cls) => (
+                      <option key={cls} value={cls}>
+                        {cls}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
-            </div>
+            ) : (
+              /* FLOW 2: Notebooks & Other Items Mode -> Item Classification > Category */
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 bg-amber-50/50 p-2 rounded-xl border border-amber-100">
+                {/* 1. Item Classification */}
+                <div>
+                  <label className="block text-[10px] font-bold text-amber-950 uppercase tracking-wider mb-0.5 flex items-center gap-1">
+                    <span className="w-3 h-3 rounded-full bg-amber-700 text-white flex items-center justify-center text-[8px] font-black">1</span>
+                    <span>Item Classification</span>
+                  </label>
+                  <select
+                    value={classificationFilter}
+                    onChange={(e) => setClassificationFilter(e.target.value)}
+                    className="w-full text-xs bg-white border border-slate-300 rounded-lg py-1 px-2 text-slate-800 focus:outline-none focus:border-[#F5B51B]"
+                  >
+                    <option value="all">All Non-Book Classifications</option>
+                    <option value="notebook">Notebooks</option>
+                    <option value="register">Registers</option>
+                    <option value="stationery">Stationery & Writing</option>
+                    <option value="general">General Items</option>
+                  </select>
+                </div>
+
+                {/* 2. Category */}
+                <div>
+                  <label className="block text-[10px] font-bold text-amber-950 uppercase tracking-wider mb-0.5 flex items-center gap-1">
+                    <span className="w-3 h-3 rounded-full bg-amber-700 text-white flex items-center justify-center text-[8px] font-black">2</span>
+                    <span>Category</span>
+                  </label>
+                  <select
+                    value={categoryFilter}
+                    onChange={(e) => setCategoryFilter(e.target.value)}
+                    className="w-full text-xs bg-white border border-slate-300 rounded-lg py-1 px-2 text-slate-800 focus:outline-none focus:border-[#F5B51B]"
+                  >
+                    <option value="all">All Categories</option>
+                    {CORE_CATEGORIES.map((cat) => (
+                      <option key={cat} value={cat}>
+                        {cat}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            )}
           </div>
 
-          {/* Search Results Display Drawer */}
+          {/* Search Results Display Drawer (High-Capacity Matching Products) */}
           {!isResultsCollapsed && (
-            <div className="border border-slate-200 rounded-lg bg-white overflow-hidden shadow-xs">
-              <div className="bg-slate-100/70 px-3 py-1.5 border-b border-slate-200 flex items-center justify-between text-[11px] font-semibold text-slate-600">
-                <span>
-                  Matching Products ({matchingProducts.length})
-                </span>
-                <span className="text-[10px] text-slate-400">
-                  Click "+ Add to Invoice" or select duplicate to increment quantity
-                </span>
+            <div className="border border-slate-200 rounded-xl bg-white overflow-hidden shadow-xs">
+              <div className="bg-slate-100/80 px-3.5 py-2 border-b border-slate-200 flex items-center justify-between text-xs font-semibold text-slate-700 flex-wrap gap-2">
+                <div className="flex items-center gap-2">
+                  <span className="font-bold text-[#071F49]">
+                    Matching Products ({matchingProducts.length})
+                  </span>
+                  {matchingProducts.length > 0 && (
+                    <span className="text-[10px] bg-blue-100 text-[#071F49] px-2 py-0.5 rounded-full font-bold">
+                      {matchingProducts.length} Found
+                    </span>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
+                  <span className="text-[11px] text-slate-500 hidden lg:inline">
+                    Click "+ Add to Invoice" or select duplicate to increment quantity
+                  </span>
+
+                  {matchingProducts.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        matchingProducts.forEach((p) => handleSelectProduct(p));
+                      }}
+                      className="text-[11px] font-bold text-[#071F49] bg-[#F5B51B] hover:bg-[#F8CE4E] px-2.5 py-1 rounded-md transition shadow-xs cursor-pointer flex items-center gap-1 active:scale-95"
+                      title="Add all matching products to current invoice"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>Add All ({matchingProducts.length})</span>
+                    </button>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={() => setIsExpandedHeight(!isExpandedHeight)}
+                    className="text-[11px] font-semibold text-slate-700 hover:text-[#071F49] bg-white border border-slate-300 hover:border-slate-400 px-2.5 py-1 rounded-md transition cursor-pointer flex items-center gap-1.5 shadow-2xs active:scale-95"
+                    title={isExpandedHeight ? "Switch to standard height" : "Expand to view more products"}
+                  >
+                    {isExpandedHeight ? (
+                      <>
+                        <Minimize2 className="w-3.5 h-3.5 text-slate-500" />
+                        <span>Standard Height</span>
+                      </>
+                    ) : (
+                      <>
+                        <Maximize2 className="w-3.5 h-3.5 text-[#071F49]" />
+                        <span>Expand View</span>
+                      </>
+                    )}
+                  </button>
+                </div>
               </div>
 
-              <div className="max-h-48 overflow-y-auto divide-y divide-slate-100">
+              <div
+                className={`${
+                  isExpandedHeight
+                    ? 'max-h-[620px]'
+                    : 'max-h-[420px] sm:max-h-[480px]'
+                } min-h-[220px] overflow-y-auto divide-y divide-slate-100 transition-all duration-200`}
+              >
                 {matchingProducts.length === 0 ? (
-                  <div className="py-6 text-center text-xs text-slate-400">
+                  <div className="py-8 text-center text-xs text-slate-400">
                     No products match the search query and filter criteria.
                   </div>
                 ) : (
@@ -565,11 +780,11 @@ export const PurchaseFormModal: React.FC<PurchaseFormModalProps> = ({
                     return (
                       <div
                         key={p.id}
-                        className="px-3 py-2 flex items-center justify-between gap-3 hover:bg-slate-50/80 transition"
+                        className="px-3.5 py-2 sm:py-2.5 flex items-center justify-between gap-3 hover:bg-blue-50/40 transition"
                       >
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-1.5 flex-wrap">
-                            <span className="font-semibold text-xs text-slate-900 truncate">
+                            <span className="font-bold text-xs sm:text-sm text-slate-900 truncate">
                               {p.title}
                             </span>
                             <span className="font-mono text-[10px] bg-slate-100 text-slate-700 px-1.5 py-0.2 rounded font-bold border border-slate-200">
@@ -588,7 +803,7 @@ export const PurchaseFormModal: React.FC<PurchaseFormModalProps> = ({
                             </span>
                           </div>
 
-                          <div className="flex items-center gap-2.5 text-[11px] text-slate-500 mt-0.5 flex-wrap">
+                          <div className="flex items-center gap-2 text-[11px] text-slate-500 mt-0.5 flex-wrap">
                             {p.authorOrPublisher && (
                               <span className="text-slate-600 font-medium italic">
                                 Publisher / Author: {p.authorOrPublisher}
@@ -609,8 +824,20 @@ export const PurchaseFormModal: React.FC<PurchaseFormModalProps> = ({
                             </span>
                             <span>•</span>
                             <span>
-                              Cost Rate: <strong className="font-mono">{formatCurrency(p.costPrice || 0)}</strong>
+                              Cost Rate: <strong className="font-mono text-slate-800">{formatCurrency(p.costPrice || 0)}</strong>
                             </span>
+                            {p.classification === 'book' && p.mrp ? (
+                              <>
+                                <span>•</span>
+                                <span>MRP: <strong className="font-mono text-slate-700">{formatCurrency(p.mrp)}</strong></span>
+                                {typeof p.publisherDiscountPercent === 'number' && (
+                                  <>
+                                    <span>•</span>
+                                    <span>Disc: <strong className="text-amber-700 font-bold">{p.publisherDiscountPercent}%</strong></span>
+                                  </>
+                                )}
+                              </>
+                            ) : null}
                           </div>
                         </div>
 
@@ -619,7 +846,7 @@ export const PurchaseFormModal: React.FC<PurchaseFormModalProps> = ({
                             <button
                               type="button"
                               onClick={() => handleSelectProduct(p)}
-                              className="flex items-center gap-1 text-[11px] font-semibold bg-emerald-50 text-emerald-800 hover:bg-emerald-100 border border-emerald-300 rounded-md px-2.5 py-1.5 transition"
+                              className="flex items-center gap-1 text-xs font-bold bg-emerald-50 text-emerald-800 hover:bg-emerald-100 border border-emerald-300 rounded-lg px-3 py-1.5 transition cursor-pointer shadow-xs active:scale-95"
                               title="Click to increase quantity in this invoice"
                             >
                               <Check className="w-3.5 h-3.5 text-emerald-600" />
@@ -629,10 +856,10 @@ export const PurchaseFormModal: React.FC<PurchaseFormModalProps> = ({
                             <button
                               type="button"
                               onClick={() => handleSelectProduct(p)}
-                              className="flex items-center gap-1 text-[11px] font-semibold bg-[#071F49] text-white hover:bg-[#071F49]/90 rounded-md px-2.5 py-1.5 transition"
+                              className="flex items-center gap-1.5 text-xs font-bold bg-[#071F49] text-white hover:bg-[#0A255B] rounded-lg px-3 py-1.5 transition cursor-pointer shadow-xs active:scale-95"
                             >
                               <Plus className="w-3.5 h-3.5 text-[#F5B51B]" />
-                              <span>Add to Invoice</span>
+                              <span>+ Add to Invoice</span>
                             </button>
                           )}
                         </div>
@@ -696,14 +923,14 @@ export const PurchaseFormModal: React.FC<PurchaseFormModalProps> = ({
               <tbody className="divide-y divide-slate-100">
                 {items.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="text-center py-10 px-4">
-                      <div className="max-w-sm mx-auto text-center space-y-1.5">
-                        <Package className="w-6 h-6 text-slate-300 mx-auto" />
+                    <td colSpan={8} className="text-center py-5 px-4">
+                      <div className="max-w-xs mx-auto text-center space-y-1">
+                        <Package className="w-5 h-5 text-slate-300 mx-auto" />
                         <p className="text-xs font-semibold text-slate-600">
                           No products added to this invoice yet
                         </p>
-                        <p className="text-[11px] text-slate-400">
-                          Use the Search & Filter bar above to find books, registers, and stationery items to add to this invoice.
+                        <p className="text-[10px] text-slate-400">
+                          Click "+ Add to Invoice" in the Matching Products list above.
                         </p>
                       </div>
                     </td>
@@ -711,47 +938,42 @@ export const PurchaseFormModal: React.FC<PurchaseFormModalProps> = ({
                 ) : (
                   items.map((row, idx) => (
                     <tr key={row.productId || idx} className="hover:bg-slate-50/60 transition">
-                      <td className="px-3 py-2.5 text-center font-mono text-slate-400">
+                      <td className="px-2.5 py-1.5 text-center font-mono text-slate-400">
                         {idx + 1}
                       </td>
-                      <td className="px-3 py-2.5">
-                        <div className="font-semibold text-slate-900 text-xs">
+                      <td className="px-2.5 py-1.5">
+                        <div className="font-semibold text-slate-900 text-xs truncate max-w-[240px]">
                           {row.productName}
                         </div>
-                        <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                        <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
                           {row.sku && (
-                            <span className="font-mono text-[10px] bg-slate-100 text-slate-600 px-1.5 py-0.2 rounded border border-slate-200 font-bold">
+                            <span className="font-mono text-[9px] bg-slate-100 text-slate-600 px-1 py-0.2 rounded border border-slate-200 font-bold">
                               {row.sku}
                             </span>
                           )}
                           {row.categoryName && (
-                            <span className="text-[10px] bg-indigo-50 text-indigo-700 px-1.5 py-0.2 rounded border border-indigo-100 font-medium">
+                            <span className="text-[9px] bg-indigo-50 text-indigo-700 px-1 py-0.2 rounded border border-indigo-100 font-medium">
                               {row.categoryName}
                             </span>
                           )}
                           {row.classification && (
-                            <span className="text-[10px] bg-amber-50 text-amber-800 px-1.5 py-0.2 rounded border border-amber-100 uppercase">
+                            <span className="text-[9px] bg-amber-50 text-amber-800 px-1 py-0.2 rounded border border-amber-100 uppercase">
                               {row.classification}
                             </span>
                           )}
                           {row.authorOrPublisher && (
-                            <span className="text-[10px] text-slate-500 italic">
+                            <span className="text-[9px] text-slate-500 italic">
                               ({row.authorOrPublisher})
-                            </span>
-                          )}
-                          {typeof row.currentStock === 'number' && (
-                            <span className="text-[10px] text-slate-400">
-                              (Stock: {row.currentStock} {row.unit || 'units'})
                             </span>
                           )}
                         </div>
                       </td>
-                      <td className="px-3 py-2.5">
+                      <td className="px-2 py-1.5">
                         <input
                           type="number"
                           min="1"
                           step="1"
-                          className="w-full text-xs font-mono text-center border border-slate-300 rounded-lg p-1.5 text-slate-900 focus:outline-none focus:border-[#F5B51B] focus:ring-1 focus:ring-[#F5B51B]"
+                          className="w-full text-xs font-mono text-center border border-slate-300 rounded-lg py-1 px-1 text-slate-900 focus:outline-none focus:border-[#F5B51B] focus:ring-1 focus:ring-[#F5B51B]"
                           value={row.quantity}
                           onChange={(e) =>
                             handleRowChange(
@@ -764,12 +986,12 @@ export const PurchaseFormModal: React.FC<PurchaseFormModalProps> = ({
                           aria-label={`Quantity for ${row.productName}`}
                         />
                       </td>
-                      <td className="px-3 py-2.5">
+                      <td className="px-2 py-1.5">
                         <input
                           type="number"
                           min="0"
                           step="any"
-                          className="w-full text-xs font-mono text-right border border-slate-300 rounded-lg p-1.5 text-slate-900 focus:outline-none focus:border-[#F5B51B] focus:ring-1 focus:ring-[#F5B51B]"
+                          className="w-full text-xs font-mono text-right border border-slate-300 rounded-lg py-1 px-1.5 text-slate-900 focus:outline-none focus:border-[#F5B51B] focus:ring-1 focus:ring-[#F5B51B]"
                           value={row.mrp}
                           onChange={(e) =>
                             handleRowChange(
@@ -782,13 +1004,13 @@ export const PurchaseFormModal: React.FC<PurchaseFormModalProps> = ({
                           aria-label={`MRP for ${row.productName}`}
                         />
                       </td>
-                      <td className="px-3 py-2.5">
+                      <td className="px-2 py-1.5">
                         <input
                           type="number"
                           min="0"
                           max="100"
                           step="any"
-                          className="w-full text-xs font-mono text-center border border-amber-300 rounded-lg p-1.5 text-amber-900 bg-amber-50/50 font-bold focus:outline-none focus:border-[#F5B51B] focus:ring-1 focus:ring-[#F5B51B]"
+                          className="w-full text-xs font-mono text-center border border-amber-300 rounded-lg py-1 px-1 text-amber-900 bg-amber-50/50 font-bold focus:outline-none focus:border-[#F5B51B] focus:ring-1 focus:ring-[#F5B51B]"
                           value={row.publisherDiscountPercent}
                           onChange={(e) =>
                             handleRowChange(
@@ -801,12 +1023,12 @@ export const PurchaseFormModal: React.FC<PurchaseFormModalProps> = ({
                           aria-label={`Publisher discount for ${row.productName}`}
                         />
                       </td>
-                      <td className="px-3 py-2.5">
+                      <td className="px-2 py-1.5">
                         <input
                           type="number"
                           min="0"
                           step="any"
-                          className="w-full text-xs font-mono text-right border border-slate-300 rounded-lg p-1.5 text-slate-900 focus:outline-none focus:border-[#F5B51B] focus:ring-1 focus:ring-[#F5B51B]"
+                          className="w-full text-xs font-mono text-right border border-slate-300 rounded-lg py-1 px-1.5 text-slate-900 focus:outline-none focus:border-[#F5B51B] focus:ring-1 focus:ring-[#F5B51B]"
                           value={row.unitCost}
                           onChange={(e) =>
                             handleRowChange(
@@ -819,12 +1041,12 @@ export const PurchaseFormModal: React.FC<PurchaseFormModalProps> = ({
                           aria-label={`Purchase rate for ${row.productName}`}
                         />
                       </td>
-                      <td className="px-3 py-2.5">
+                      <td className="px-2 py-1.5">
                         <input
                           type="number"
                           min="0"
                           step="any"
-                          className="w-full text-xs font-mono font-bold text-right border border-slate-300 rounded-lg p-1.5 text-slate-900 focus:outline-none focus:border-[#F5B51B] focus:ring-1 focus:ring-[#F5B51B]"
+                          className="w-full text-xs font-mono font-bold text-right border border-slate-300 rounded-lg py-1 px-1.5 text-slate-900 focus:outline-none focus:border-[#F5B51B] focus:ring-1 focus:ring-[#F5B51B]"
                           value={row.totalCost}
                           onChange={(e) =>
                             handleRowChange(
@@ -840,7 +1062,7 @@ export const PurchaseFormModal: React.FC<PurchaseFormModalProps> = ({
                           {formatCurrency(row.totalCost)}
                         </div>
                       </td>
-                      <td className="px-3 py-2.5 text-center">
+                      <td className="px-2 py-1.5 text-center">
                         <button
                           type="button"
                           onClick={() => handleRemoveRow(idx)}
@@ -860,8 +1082,8 @@ export const PurchaseFormModal: React.FC<PurchaseFormModalProps> = ({
         </div>
 
         {/* Financial Settlement & Payment Breakdown */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2.5">
             <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
               <Calculator className="w-4 h-4 text-[#071F49]" />
               Payment Mode & Khata
@@ -895,7 +1117,7 @@ export const PurchaseFormModal: React.FC<PurchaseFormModalProps> = ({
             />
           </div>
 
-          <div className="p-4 bg-[#071F49] text-white rounded-xl space-y-2.5 flex flex-col justify-between">
+          <div className="p-3 bg-[#071F49] text-white rounded-xl space-y-2 flex flex-col justify-between">
             <h4 className="text-xs font-bold uppercase tracking-wider text-[#F5B51B]">
               Invoice Summary
             </h4>

@@ -149,6 +149,7 @@ export interface ProductDocument {
   mrp?: number; // Explicit MRP alias
   publisherDiscountPercent?: number; // Manually entered product-level publisher discount % (e.g. 50%)
   wholesalePrice?: number; // Maintained for backward compatibility (defaults to retailPrice)
+  marketShopPrice?: number; // Custom selling price for Market Shop customers
   currentStock: number;
   lowStockThreshold: number;
   unit: string; // 'piece', 'bundle', 'dozen', 'box'

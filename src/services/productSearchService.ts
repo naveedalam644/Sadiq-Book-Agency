@@ -12,6 +12,11 @@ import {
 } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import type { ProductDocument } from '../types/database';
+import {
+  matchesPublisherHierarchy,
+  matchesSeriesHierarchy,
+  matchesClassHierarchy,
+} from '../utils/purchaseFormHelpers';
 
 export interface ProductSearchResult extends ProductDocument {
   publisherName: string; // Strictly resolved from ProductDocument.publisherName (or 'Unknown')
@@ -239,26 +244,22 @@ export const getProductsByHierarchy = async (
     };
   }
 
-  const queryConstraints: any[] = [];
-  if (hasSer) {
-    queryConstraints.push(where('seriesId', '==', seriesId));
-  } else if (hasPub) {
-    queryConstraints.push(where('publisherId', '==', publisherId));
-  } else if (hasClass) {
-    queryConstraints.push(where('classification', '==', 'book'));
-  }
+  // Fetch active products with generous window to avoid dropping matches
+  const queryConstraints: any[] = [
+    where('isActive', '==', true),
+  ];
 
   if (cursorDoc) {
     queryConstraints.push(startAfter(cursorDoc));
   }
 
-  queryConstraints.push(limit(50));
+  queryConstraints.push(limit(300));
 
   const q = query(collection(customDb, 'products'), ...queryConstraints);
   const snap = await getDocs(q);
 
   const docs = snap.docs;
-  const hasMore = docs.length === 50;
+  const hasMore = docs.length === 300;
   const nextCursor = hasMore ? docs[docs.length - 1] : null;
 
   let products: ProductSearchResult[] = docs.map((docSnap) => {
@@ -270,15 +271,15 @@ export const getProductsByHierarchy = async (
     };
   });
 
+  // Filter with intelligent hierarchy matchers
+  if (hasPub) {
+    products = products.filter((p) => matchesPublisherHierarchy(p, publisherId));
+  }
+  if (hasSer) {
+    products = products.filter((p) => matchesSeriesHierarchy(p, seriesId));
+  }
   if (hasClass) {
-    const cls = targetClass!.toLowerCase().trim();
-    products = products.filter((p) => {
-      if (p.targetClass && p.targetClass.toLowerCase().trim() === cls) return true;
-      if (p.className && p.className.toLowerCase().trim() === cls) return true;
-      if (p.edition && p.edition.toLowerCase().includes(cls)) return true;
-      if (p.title && p.title.toLowerCase().includes(cls)) return true;
-      return false;
-    });
+    products = products.filter((p) => matchesClassHierarchy(p, targetClass));
   }
 
   return {
