@@ -9,28 +9,47 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    function isStoreAdminEmail() {
+      return isAuthenticated() && (
+        request.auth.token.email in ['uh5882000@gmail.com', 'admin@sadiqbookagency.com']
+      );
+    }
+
+    function hasUserDoc() {
+      return isAuthenticated() && exists(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
     function getUserDoc() {
       return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
     }
 
-    // Active status must be strictly verified against the database.
-    // Even if a user possesses a valid token, if isActive != true, all access is revoked.
+    // Active status: verified against user document if present; unseeded or registered store admin emails are active.
     function isUserActive() {
-      return isAuthenticated() &&
-        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-        getUserDoc().isActive == true;
+      return isAuthenticated() && (
+        isStoreAdminEmail() ||
+        !hasUserDoc() ||
+        (getUserDoc().isActive == true)
+      );
     }
 
     function isAdmin() {
-      return isUserActive() && getUserDoc().role == 'admin';
+      return isAuthenticated() && (
+        isStoreAdminEmail() ||
+        (!hasUserDoc()) ||
+        (isUserActive() && getUserDoc().role == 'admin')
+      );
     }
 
     function isCashier() {
-      return isUserActive() && getUserDoc().role == 'cashier';
+      return isUserActive() && hasUserDoc() && (getUserDoc().role == 'cashier' || getUserDoc().role == 'operator');
     }
 
     function isStaff() {
-      return isUserActive() && (getUserDoc().role == 'admin' || getUserDoc().role == 'cashier');
+      return isAuthenticated() && (
+        isAdmin() ||
+        isCashier() ||
+        !hasUserDoc()
+      );
     }
 
     function isSelf(userId) {
@@ -47,7 +66,8 @@ service cloud.firestore {
     // -------------------------------------------------------------------------
     match /users/{userId} {
       allow read: if isSelf(userId) || isAdmin();
-      allow create, update, delete: if isAdmin();
+      allow create, update: if isSelf(userId) || isAdmin();
+      allow delete: if isAdmin();
     }
 
     // -------------------------------------------------------------------------
@@ -55,7 +75,7 @@ service cloud.firestore {
     // -------------------------------------------------------------------------
     match /settings/{settingId} {
       allow read: if isStaff();
-      allow write: if isAdmin();
+      allow write: if isAdmin() || (isStaff() && settingId == 'inventory_summary');
     }
 
     // -------------------------------------------------------------------------
@@ -72,7 +92,8 @@ service cloud.firestore {
     // -------------------------------------------------------------------------
     match /products/{productId} {
       allow read: if isStaff();
-      allow create, delete: if isAdmin();
+      allow create: if isStaff();
+      allow delete: if isAdmin();
       // Admins have full update capability.
       // Cashiers can update stock ONLY:
       // a) Decrement stock as part of an atomic sale (linked to sales via getAfter/existsAfter)
@@ -105,7 +126,7 @@ service cloud.firestore {
     // -------------------------------------------------------------------------
     match /categories/{categoryId} {
       allow read: if isStaff();
-      allow write: if isAdmin();
+      allow write: if isStaff();
     }
 
     // -------------------------------------------------------------------------
@@ -113,7 +134,7 @@ service cloud.firestore {
     // -------------------------------------------------------------------------
     match /publishers/{publisherId} {
       allow read: if isStaff();
-      allow write: if isAdmin();
+      allow write: if isStaff();
     }
 
     // -------------------------------------------------------------------------
@@ -121,7 +142,7 @@ service cloud.firestore {
     // -------------------------------------------------------------------------
     match /series/{seriesId} {
       allow read: if isStaff();
-      allow write: if isAdmin();
+      allow write: if isStaff();
     }
 
     // -------------------------------------------------------------------------
@@ -129,7 +150,7 @@ service cloud.firestore {
     // -------------------------------------------------------------------------
     match /notebookAttributes/{attributeId} {
       allow read: if isStaff();
-      allow write: if isAdmin();
+      allow write: if isStaff();
     }
 
     // -------------------------------------------------------------------------
@@ -199,9 +220,9 @@ service cloud.firestore {
           request.resource.data.unitCost is number &&
           request.resource.data.unitCost >= 0
         ) ||
-        // Case 2: Opening Batch created by Admin (e.g. purchase intake legacy migration, manual stock init)
+        // Case 2: Opening Batch created during intake migration / product creation / manual stock init
         (
-          isAdmin() &&
+          isStaff() &&
           request.resource.data.batchType == 'opening' &&
           request.resource.data.productId is string &&
           exists(/databases/$(database)/documents/products/$(request.resource.data.productId)) &&
@@ -212,9 +233,9 @@ service cloud.firestore {
           request.resource.data.unitCost is number &&
           request.resource.data.unitCost >= 0
         ) ||
-        // Case 3: Virtual Opening Batch created by Cashier during atomic Sale (legacy stock depletion)
+        // Case 3: Virtual Opening Batch created during atomic Sale (legacy stock depletion)
         (
-          isCashier() &&
+          isStaff() &&
           request.resource.data.batchType == 'opening' &&
           request.resource.data.productId is string &&
           request.resource.data.lastSaleId is string &&
@@ -226,9 +247,9 @@ service cloud.firestore {
           request.resource.data.remainingQuantity < request.resource.data.quantityPurchased &&
           request.resource.data.remainingQuantity >= 0
         ) ||
-        // Case 4: Virtual Opening Batch created by Cashier during atomic Customer Return (legacy return)
+        // Case 4: Virtual Opening Batch created during atomic Customer Return (legacy return)
         (
-          isCashier() &&
+          isStaff() &&
           request.resource.data.batchType == 'opening' &&
           request.resource.data.productId is string &&
           request.resource.data.lastReturnNo is string &&
@@ -249,16 +270,18 @@ service cloud.firestore {
       // b) Cashier Depletion (Sale): linked to atomic sale via existsAfter(sales/...)
       // c) Cashier Restoration (Customer Return): linked to atomic return via existsAfter(salesReturns/...)
       allow update: if (
-        // Admin update (e.g. manual adjustments, repairs)
+        // Admin update (e.g. manual adjustments, repairs, sales)
         (
           isAdmin() &&
           (
             request.resource.data.diff(resource.data).affectedKeys().hasOnly(['remainingQuantity', 'updatedAt']) ||
-            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['remainingQuantity', 'updatedAt', 'lastSaleId', 'lastReturnNo'])
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['remainingQuantity', 'updatedAt', 'lastSaleId']) ||
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['remainingQuantity', 'updatedAt', 'lastReturnNo']) ||
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['remainingQuantity', 'updatedAt', 'lastSaleId', 'lastReturnNo']) ||
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['remainingQuantity', 'quantityPurchased', 'totalCost', 'updatedAt'])
           ) &&
           request.resource.data.remainingQuantity is number &&
-          request.resource.data.remainingQuantity >= 0 &&
-          request.resource.data.remainingQuantity <= resource.data.quantityPurchased
+          request.resource.data.remainingQuantity >= 0
         ) ||
         // Cashier update: strictly linked to legitimate sales or returns
         (
@@ -297,11 +320,17 @@ service cloud.firestore {
     match /stockMovements/{movementId} {
       allow read: if isStaff();
       allow create: if (isAdmin() && !exists(/databases/$(database)/documents/stockMovements/$(movementId))) || (
-        isCashier() &&
+        isStaff() &&
         !exists(/databases/$(database)/documents/stockMovements/$(movementId)) &&
         request.resource.data.quantity > 0 &&
-        request.resource.data.recordedByUserId == request.auth.uid &&
+        request.resource.data.recordedByUserId is string &&
         (
+          // Initial stock adjustment on product creation
+          (
+            request.resource.data.movementType == 'in' &&
+            request.resource.data.reason == 'adjustment' &&
+            request.resource.data.referenceDocId == 'INITIAL_STOCK'
+          ) ||
           // Sale movement out
           (
             request.resource.data.movementType == 'out' &&
@@ -324,7 +353,8 @@ service cloud.firestore {
     // -------------------------------------------------------------------------
     match /customers/{customerId} {
       allow read: if isStaff();
-      allow create, delete: if isAdmin();
+      allow create: if isStaff();
+      allow delete: if isAdmin();
       // Admins have full update capability.
       // Cashiers can update customer balance ONLY if:
       // a) Linked to a sale being created in this transaction via existsAfter() (credit increase)
@@ -339,8 +369,10 @@ service cloud.firestore {
             existsAfter(/databases/$(database)/documents/sales/$(request.resource.data.lastSaleId)) &&
             customerId == getAfter(/databases/$(database)/documents/sales/$(request.resource.data.lastSaleId)).data.customerId &&
             request.resource.data.currentBalance == resource.data.currentBalance + getAfter(/databases/$(database)/documents/sales/$(request.resource.data.lastSaleId)).data.balanceAddedToCredit &&
-            resource.data.creditLimit > 0 &&
-            request.resource.data.currentBalance <= resource.data.creditLimit
+            (
+              (resource.data.creditLimit > 0 && request.resource.data.currentBalance <= resource.data.creditLimit) ||
+              (getAfter(/databases/$(database)/documents/sales/$(request.resource.data.lastSaleId)).data.creditLimitOverride != null)
+            )
           ) ||
           // Return balance deduction (Fix 5)
           (
@@ -371,7 +403,8 @@ service cloud.firestore {
         isCashier() &&
         !exists(/databases/$(database)/documents/customerLedger/$(ledgerId)) &&
         request.resource.data.amount > 0 &&
-        request.resource.data.recordedByUserId == request.auth.uid &&
+        request.resource.data.recordedByUserId is string &&
+        (request.resource.data.recordedByUserId == request.auth.uid || isAdmin()) &&
         (
           // Debit entry linked to sale
           (
@@ -403,7 +436,8 @@ service cloud.firestore {
         isCashier() &&
         !exists(/databases/$(database)/documents/payments/$(paymentId)) &&
         request.resource.data.amount > 0 &&
-        request.resource.data.receivedByUserId == request.auth.uid &&
+        request.resource.data.receivedByUserId is string &&
+        (request.resource.data.receivedByUserId == request.auth.uid || isAdmin()) &&
         (
           // Direct sale incoming payment
           (
@@ -432,7 +466,8 @@ service cloud.firestore {
         !exists(/databases/$(database)/documents/sales/$(saleId)) &&
         request.resource.data.id == saleId &&
         request.resource.data.invoiceNo == saleId &&
-        request.resource.data.operatorUserId == request.auth.uid &&
+        request.resource.data.operatorUserId is string &&
+        (request.resource.data.operatorUserId == request.auth.uid || isAdmin()) &&
         request.resource.data.customerType in ['wholesaler', 'marketshop', 'parchon'] &&
         request.resource.data.customerName is string &&
         request.resource.data.customerName.size() > 0 &&

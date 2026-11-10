@@ -14,7 +14,7 @@ import {
   type DocumentData,
   writeBatch,
 } from 'firebase/firestore';
-import { db } from '../config/firebase';
+import { auth, db } from '../config/firebase';
 import type {
   ProductDocument,
   ItemClassification,
@@ -250,6 +250,12 @@ export const createProduct = async (
 ): Promise<ProductDocument> => {
   if (!db) throw new Error('Firestore not initialized');
 
+  const effectiveUserId =
+    (userId && userId !== 'system' && userId !== 'admin' && userId !== 'cashier')
+      ? userId
+      : (auth?.currentUser?.uid || userId || 'system');
+  const effectiveUserEmail = auth?.currentUser?.email || userEmail;
+
   // Check unique SKU
   const isUnique = await checkSkuUnique(input.sku);
   if (!isUnique) {
@@ -354,7 +360,7 @@ export const createProduct = async (
       newStock: newProduct.currentStock,
       reason: 'adjustment',
       referenceDocId: 'INITIAL_STOCK',
-      recordedByUserId: userId,
+      recordedByUserId: effectiveUserId,
       createdAt: now,
     };
     batch.set(moveRef, movement);
@@ -379,8 +385,8 @@ export const createProduct = async (
     'products',
     `Created product: ${newProduct.title} (${newProduct.sku}) with stock ${newProduct.currentStock}`,
     newProduct.id,
-    userId,
-    userEmail
+    effectiveUserId,
+    effectiveUserEmail
   );
 
   return newProduct;
@@ -393,6 +399,12 @@ export const updateProduct = async (
   userEmail = 'admin@sadiqbookagency.com'
 ): Promise<ProductDocument> => {
   if (!db) throw new Error('Firestore not initialized');
+
+  const effectiveUserId =
+    (userId && userId !== 'system' && userId !== 'admin' && userId !== 'cashier')
+      ? userId
+      : (auth?.currentUser?.uid || userId || 'system');
+  const effectiveUserEmail = auth?.currentUser?.email || userEmail;
 
   const existing = await getProductById(id);
   if (!existing) throw new Error('Product not found');
@@ -564,8 +576,8 @@ export const updateProduct = async (
     'products',
     `Updated product: ${updates.title || existing.title} (Stock: ${newCurrentStock})`,
     id,
-    userId,
-    userEmail
+    effectiveUserId,
+    effectiveUserEmail
   );
 
   return { ...existing, ...updatedDocData } as ProductDocument;

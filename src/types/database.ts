@@ -9,7 +9,7 @@ export interface UserDocument {
   id: string;
   email: string;
   displayName: string;
-  role: 'admin' | 'manager' | 'operator';
+  role: 'admin' | 'manager' | 'operator' | 'cashier';
   phoneNumber?: string;
   isActive: boolean;
   createdAt: string;

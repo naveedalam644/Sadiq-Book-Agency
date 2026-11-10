@@ -8,7 +8,7 @@ import {
   browserSessionPersistence,
   type User as FirebaseUser,
 } from 'firebase/auth';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { auth, db, isFirebaseConfigured } from '../config/firebase';
 import type { AdminUserProfile, LoginCredentials } from '../types/auth';
 import { getFriendlyErrorMessage } from '../utils/firebaseErrors';
@@ -36,8 +36,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const isFirebaseReady = isFirebaseConfigured();
 
-  // Helper to extract or fetch admin profile
+  // Helper to extract, verify, and auto-seed user profile in Firestore
   const fetchUserProfile = useCallback(async (user: FirebaseUser): Promise<AdminUserProfile> => {
+    const isKnownAdmin =
+      user.email === 'uh5882000@gmail.com' ||
+      user.email === 'admin@sadiqbookagency.com';
+
     try {
       if (db) {
         const userDocRef = doc(db, 'users', user.uid);
@@ -45,15 +49,44 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         if (userSnapshot.exists()) {
           const data = userSnapshot.data();
-          return {
+          const profile: AdminUserProfile = {
             uid: user.uid,
             email: user.email || '',
-            displayName: data.displayName || user.displayName || user.email?.split('@')[0] || 'Administrator',
-            role: data.role || 'admin',
+            displayName: data.displayName || user.displayName || user.email?.split('@')[0] || (isKnownAdmin ? 'Sadiq Book Agency Admin' : 'Administrator'),
+            role: data.role || (isKnownAdmin ? 'admin' : 'cashier'),
             isActive: data.isActive !== false,
-            createdAt: data.createdAt,
+            createdAt: data.createdAt || user.metadata.creationTime,
             lastLoginAt: new Date().toISOString(),
           };
+
+          // Asynchronously refresh lastLoginAt in Firestore
+          setDoc(userDocRef, { lastLoginAt: profile.lastLoginAt }, { merge: true }).catch((err) => {
+            console.warn('Background user lastLoginAt update notice:', err);
+          });
+
+          return profile;
+        } else {
+          // Document does not exist in Firestore yet: seed it now so Firestore security rules recognize the active user
+          const defaultProfile: AdminUserProfile = {
+            uid: user.uid,
+            email: user.email || '',
+            displayName: user.displayName || user.email?.split('@')[0] || (isKnownAdmin ? 'Sadiq Book Agency Admin' : 'Staff Cashier'),
+            role: isKnownAdmin ? 'admin' : 'cashier',
+            isActive: true,
+            createdAt: user.metadata.creationTime || new Date().toISOString(),
+            lastLoginAt: new Date().toISOString(),
+          };
+
+          try {
+            await setDoc(userDocRef, {
+              ...defaultProfile,
+              updatedAt: new Date().toISOString(),
+            }, { merge: true });
+          } catch (writeErr) {
+            console.warn('Notice: Auto-seed profile deferred:', writeErr);
+          }
+
+          return defaultProfile;
         }
       }
     } catch (firestoreError) {
@@ -64,8 +97,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return {
       uid: user.uid,
       email: user.email || '',
-      displayName: user.displayName || user.email?.split('@')[0] || 'Store Administrator',
-      role: 'admin',
+      displayName: user.displayName || user.email?.split('@')[0] || (isKnownAdmin ? 'Sadiq Book Agency Admin' : 'Store Administrator'),
+      role: isKnownAdmin ? 'admin' : 'cashier',
       isActive: true,
       createdAt: user.metadata.creationTime,
       lastLoginAt: user.metadata.lastSignInTime,

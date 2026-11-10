@@ -71,7 +71,7 @@ const COMMON_SHEET_PRESETS = ['40', '60', '80', '100', '120', '160', '200', '240
 const COMMON_SIZE_PRESETS = ['A4', 'A5', 'Foolscap', 'Large', 'Small', 'Executive', 'B5'];
 
 export const POS: React.FC = () => {
-  const { currentUser } = useAuth();
+  const { currentUser, firebaseUser } = useAuth();
   const terminalId = 'T1';
 
   // 1. Core POS Cart Hook
@@ -119,10 +119,12 @@ export const POS: React.FC = () => {
 
   const handleSaveProduct = async (payload: CreateProductInput) => {
     try {
+      const activeUid = firebaseUser?.uid || currentUser?.uid;
+      const activeEmail = firebaseUser?.email || currentUser?.email || 'cashier@sadiqbookagency.com';
       await createProduct(
         payload,
-        currentUser?.uid || 'cashier',
-        currentUser?.email || 'cashier@sadiqbookagency.com'
+        activeUid || 'cashier',
+        activeEmail
       );
       toastSuccess(`Product "${payload.title}" registered in catalog.`);
       setIsAddProductModalOpen(false);
@@ -758,9 +760,10 @@ export const POS: React.FC = () => {
       }
 
       await withSubmissionGuard(async () => {
-        const operatorEmail = currentUser?.email || 'cashier@sadiqbookagency.com';
-        const operatorId = currentUser?.uid || 'system_cashier';
-        const operatorName = currentUser?.displayName || 'Cashier';
+        const activeUid = firebaseUser?.uid || currentUser?.uid;
+        const operatorEmail = firebaseUser?.email || currentUser?.email || 'cashier@sadiqbookagency.com';
+        const operatorId = activeUid || 'system_cashier';
+        const operatorName = currentUser?.displayName || firebaseUser?.displayName || 'Cashier';
 
         const result = await processSaleTransaction(payload, operatorId, operatorName, operatorEmail);
 

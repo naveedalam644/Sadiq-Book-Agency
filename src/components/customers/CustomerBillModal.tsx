@@ -53,7 +53,7 @@ export const CustomerBillModal: React.FC<CustomerBillModalProps> = ({
   customer,
   onSuccess,
 }) => {
-  const { currentUser, isAdmin } = useAuth();
+  const { currentUser, firebaseUser, isAdmin } = useAuth();
 
   // Form State
   const [billDate, setBillDate] = useState(() => new Date().toISOString().split('T')[0]);
@@ -353,9 +353,10 @@ export const CustomerBillModal: React.FC<CustomerBillModalProps> = ({
         notes: notes.trim() || undefined,
       };
 
-      const operatorId = currentUser?.uid || 'system_admin';
-      const operatorName = currentUser?.displayName || 'Store Administrator';
-      const operatorEmail = currentUser?.email || 'admin@sadiqbookagency.com';
+      const activeUid = firebaseUser?.uid || currentUser?.uid;
+      const operatorId = activeUid || 'system_admin';
+      const operatorName = currentUser?.displayName || firebaseUser?.displayName || 'Store Administrator';
+      const operatorEmail = firebaseUser?.email || currentUser?.email || 'admin@sadiqbookagency.com';
 
       const result = await processSaleTransaction(payload, operatorId, operatorName, operatorEmail);
 
