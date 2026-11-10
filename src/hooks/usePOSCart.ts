@@ -8,6 +8,7 @@ import type {
 import { resolveEffectivePrice } from '../services/discountService';
 import {
   getOrCreateCheckoutSession,
+  createCheckoutSession,
   clearCheckoutSession,
   type CheckoutSession,
   type SimpleStorage,
@@ -960,10 +961,26 @@ export const usePOSCart = (options: UsePOSCartOptions = {}) => {
       );
     }
 
+    const now = new Date();
+    const todayYY = String(now.getFullYear()).slice(-2);
+    const todayMM = String(now.getMonth() + 1).padStart(2, '0');
+    const todayDD = String(now.getDate()).padStart(2, '0');
+    const todayYYMMDD = `${todayYY}${todayMM}${todayDD}`;
+    const todayDateStr = now.toISOString().split('T')[0];
+
+    let activeSession = session;
+    const sessionMatch = activeSession.checkoutSessionId.match(/^(?:CS|SESS)-([0-9]{6})-/i);
+    // If active session date is from an older calendar day, auto-rotate to a fresh session for today
+    if (!sessionMatch || sessionMatch[1] !== todayYYMMDD) {
+      activeSession = createCheckoutSession(cleanTerm, store || undefined);
+      setSession(activeSession);
+    }
+
     return {
-      checkoutSessionId: session.checkoutSessionId,
-      sessionCreatedAt: session.sessionCreatedAt,
-      terminalId: session.terminalId,
+      checkoutSessionId: activeSession.checkoutSessionId,
+      sessionCreatedAt: activeSession.sessionCreatedAt,
+      terminalId: activeSession.terminalId,
+      saleDate: todayDateStr,
       customerType,
       customerId: customer?.id || '',
       customerName: customer ? (customer.shopName || customer.name) : 'Counter Cash Customer',
@@ -978,7 +995,7 @@ export const usePOSCart = (options: UsePOSCartOptions = {}) => {
       customDueDate: customDueDate?.trim() || undefined,
       notes: notes.trim() || undefined,
     };
-  }, [items, lockStatus, session, customerType, customer, notes]);
+  }, [items, lockStatus, session, customerType, customer, notes, cleanTerm, store]);
 
   const withSubmissionGuard = useCallback(async <T>(action: () => Promise<T>): Promise<T> => {
     if (isSubmittingRef.current) {

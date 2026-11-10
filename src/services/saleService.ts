@@ -120,6 +120,12 @@ export const getOrCreateCheckoutSession = (
   const cleanTerm = terminalId.replace(/[^A-Za-z0-9]/g, '').slice(0, 3).toUpperCase() || 'T1';
   const storageKey = getCheckoutSessionStorageKey(cleanTerm);
 
+  const now = new Date();
+  const todayYY = String(now.getFullYear()).slice(-2);
+  const todayMM = String(now.getMonth() + 1).padStart(2, '0');
+  const todayDD = String(now.getDate()).padStart(2, '0');
+  const todayDateYYMMDD = `${todayYY}${todayMM}${todayDD}`;
+
   if (store) {
     try {
       const existingJson = store.getItem(storageKey);
@@ -131,7 +137,13 @@ export const getOrCreateCheckoutSession = (
           parsed.terminalId &&
           parsed.terminalId.toUpperCase() === cleanTerm
         ) {
-          return parsed; // Restored exact session across page refresh / browser restart!
+          // Strictly verify that the session belongs to TODAY's calendar date.
+          // If the session was generated yesterday or earlier, discard it so new sales
+          // use today's session identifier and today's sequential invoice numbering.
+          const match = parsed.checkoutSessionId.match(/^(?:CS|SESS)-([0-9]{6})-/i);
+          if (match && match[1] === todayDateYYMMDD) {
+            return parsed; // Restored exact active session across page refresh / browser restart today!
+          }
         }
       }
     } catch {
@@ -139,7 +151,20 @@ export const getOrCreateCheckoutSession = (
     }
   }
 
-  // Generate a new immutable session
+  return createCheckoutSession(terminalId, store || undefined);
+};
+
+/**
+ * Initializes and persists a brand-new immutable checkout session for the specified terminal.
+ */
+export const createCheckoutSession = (
+  terminalId = 'T1',
+  storage?: SimpleStorage
+): CheckoutSession => {
+  const store = storage || (typeof window !== 'undefined' ? window.localStorage : null);
+  const cleanTerm = terminalId.replace(/[^A-Za-z0-9]/g, '').slice(0, 3).toUpperCase() || 'T1';
+  const storageKey = getCheckoutSessionStorageKey(cleanTerm);
+
   const now = new Date();
   const sessionCreatedAt = now.toISOString();
   const yy = String(now.getFullYear()).slice(-2);
@@ -203,7 +228,16 @@ export const restoreCheckoutSession = (
       parsed.terminalId &&
       parsed.terminalId.toUpperCase() === cleanTerm
     ) {
-      return parsed;
+      const now = new Date();
+      const todayYY = String(now.getFullYear()).slice(-2);
+      const todayMM = String(now.getMonth() + 1).padStart(2, '0');
+      const todayDD = String(now.getDate()).padStart(2, '0');
+      const todayDateYYMMDD = `${todayYY}${todayMM}${todayDD}`;
+
+      const match = parsed.checkoutSessionId.match(/^(?:CS|SESS)-([0-9]{6})-/i);
+      if (match && match[1] === todayDateYYMMDD) {
+        return parsed;
+      }
     }
   } catch {
     return null;
@@ -294,7 +328,12 @@ export const generateInvoiceNumber = (
   let dd: string;
   let cleanTerm: string;
 
-  if (sessionPatternMatch) {
+  if (date) {
+    yy = String(date.getFullYear()).slice(-2);
+    mm = String(date.getMonth() + 1).padStart(2, '0');
+    dd = String(date.getDate()).padStart(2, '0');
+    cleanTerm = (terminalId || (sessionPatternMatch ? sessionPatternMatch[2] : 'T1')).replace(/[^A-Za-z0-9]/g, '').slice(0, 3).toUpperCase() || 'T1';
+  } else if (sessionPatternMatch) {
     // Immutable mapping locked into checkoutSessionId identity
     const dateYYMMDD = sessionPatternMatch[1];
     yy = dateYYMMDD.slice(0, 2);
@@ -303,7 +342,7 @@ export const generateInvoiceNumber = (
     cleanTerm = sessionPatternMatch[2].toUpperCase();
   } else {
     // Fallback for non-prefixed session identifiers
-    const d = date || new Date();
+    const d = new Date();
     yy = String(d.getFullYear()).slice(-2);
     mm = String(d.getMonth() + 1).padStart(2, '0');
     dd = String(d.getDate()).padStart(2, '0');
@@ -393,12 +432,14 @@ export const processSaleTransaction = async (
     }
   }
 
-  const sessionDate = new Date(input.sessionCreatedAt);
   const now = new Date().toISOString();
-  const saleDateStr = input.saleDate || input.sessionCreatedAt.split('T')[0] || now.split('T')[0];
+  const todayDateStr = now.split('T')[0];
+  const saleDateStr = input.saleDate || todayDateStr;
+  const effectiveInvoiceDate = new Date(saleDateStr);
 
   // Daily sequential invoice starting from 0001 (e.g. INV-20261105-0001)
   let invoiceNo = '';
+  let activeSeqNum = 1;
   try {
     const salesDateQuery = query(
       collection(db, 'sales'),
@@ -415,19 +456,33 @@ export const processSaleTransaction = async (
       invoiceNo = existingSessionDoc.id;
     } else {
       let seqNum = dateSalesSnap.size + 1;
-      let candidate = generateInvoiceNumber(cleanSessionId, effectiveTerminalId, sessionDate, seqNum);
+      activeSeqNum = seqNum;
+      let candidate = generateInvoiceNumber(cleanSessionId, effectiveTerminalId, effectiveInvoiceDate, seqNum);
       while (dateSalesSnap.docs.some((d) => d.id === candidate || d.data().invoiceNo === candidate)) {
         seqNum++;
-        candidate = generateInvoiceNumber(cleanSessionId, effectiveTerminalId, sessionDate, seqNum);
+        activeSeqNum = seqNum;
+        candidate = generateInvoiceNumber(cleanSessionId, effectiveTerminalId, effectiveInvoiceDate, seqNum);
       }
+
+      // Hardened Anti-Collision: Directly verify with Firestore that candidate does not exist from another session
+      let candidateRef = doc(db, 'sales', candidate);
+      let candidateSnap = await getDoc(candidateRef);
+      while (candidateSnap.exists() && candidateSnap.data()?.checkoutSessionId !== cleanSessionId) {
+        seqNum++;
+        activeSeqNum = seqNum;
+        candidate = generateInvoiceNumber(cleanSessionId, effectiveTerminalId, effectiveInvoiceDate, seqNum);
+        candidateRef = doc(db, 'sales', candidate);
+        candidateSnap = await getDoc(candidateRef);
+      }
+
       invoiceNo = candidate;
     }
   } catch (err) {
     console.warn('Failed to query daily sales sequence, falling back to deterministic session format:', err);
-    invoiceNo = generateInvoiceNumber(cleanSessionId, effectiveTerminalId, sessionDate);
+    invoiceNo = generateInvoiceNumber(cleanSessionId, effectiveTerminalId, effectiveInvoiceDate);
   }
 
-  const saleRef = doc(db, 'sales', invoiceNo);
+  let saleRef = doc(db, 'sales', invoiceNo);
 
   // Pre-load active batches outside transaction for concurrency locking
   const preloadedBatchesMap = new Map<string, StockBatchDocument[]>();
@@ -443,40 +498,41 @@ export const processSaleTransaction = async (
   let totalQuantitySold = 0;
   let totalCostOfGoodsSold = 0;
 
-  await runTransaction(db, async (transaction) => {
-    // ---------------------------------------------------------------------------------
-    // STEP 1: IDEMPOTENCY CHECK & SESSION VERIFICATION
-    // ---------------------------------------------------------------------------------
-    const saleSnap = await transaction.get(saleRef);
-    if (saleSnap.exists()) {
-      const existing = saleSnap.data() as SaleDocument;
-      // Verify stored checkoutSessionId matches attempting session
-      if (existing.checkoutSessionId !== cleanSessionId) {
-        throw new DuplicateSaleError(
-          invoiceNo,
-          cleanSessionId,
-          `Invoice ID collision detected! Stored session "${existing.checkoutSessionId}" does not match attempting session "${cleanSessionId}".`
-        );
-      }
-      // Verify terminal consistency on retry if both specify terminal
-      if (existing.terminalId && input.terminalId) {
-        const cleanInputTerm = input.terminalId.replace(/[^A-Za-z0-9]/g, '').slice(0, 3).toUpperCase();
-        if (existing.terminalId.toUpperCase() !== cleanInputTerm) {
-          throw new Error(`Inconsistent session metadata! Stored terminal "${existing.terminalId}" does not match retry terminalId "${input.terminalId}".`);
-        }
-      }
-      // Verify sessionCreatedAt consistency on retry
-      if (existing.sessionCreatedAt && existing.sessionCreatedAt !== input.sessionCreatedAt) {
-        throw new Error(`Inconsistent session metadata! Stored sessionCreatedAt "${existing.sessionCreatedAt}" does not match retry sessionCreatedAt "${input.sessionCreatedAt}".`);
-      }
-      // Exact same checkout session retried idempotently
-      finalSaleDoc = existing;
-      isDuplicateReturn = true;
-      return;
-    }
+  let retryAttempts = 5;
+  while (retryAttempts > 0) {
+    try {
+      await runTransaction(db, async (transaction) => {
+        // ---------------------------------------------------------------------------------
+        // STEP 1: IDEMPOTENCY CHECK & SESSION VERIFICATION
+        // ---------------------------------------------------------------------------------
+        const saleSnap = await transaction.get(saleRef);
+        if (saleSnap.exists()) {
+          const existing = saleSnap.data() as SaleDocument;
+          // Verify stored checkoutSessionId matches attempting session (idempotent retry)
+          if (existing.checkoutSessionId === cleanSessionId) {
+            // Verify terminal consistency on retry if both specify terminal
+            if (existing.terminalId && input.terminalId) {
+              const cleanInputTerm = input.terminalId.replace(/[^A-Za-z0-9]/g, '').slice(0, 3).toUpperCase();
+              if (existing.terminalId.toUpperCase() !== cleanInputTerm) {
+                throw new Error(`Inconsistent session metadata! Stored terminal "${existing.terminalId}" does not match retry terminalId "${input.terminalId}".`);
+              }
+            }
+            // Verify sessionCreatedAt consistency on retry
+            if (existing.sessionCreatedAt && existing.sessionCreatedAt !== input.sessionCreatedAt) {
+              throw new Error(`Inconsistent session metadata! Stored sessionCreatedAt "${existing.sessionCreatedAt}" does not match retry sessionCreatedAt "${input.sessionCreatedAt}".`);
+            }
+            // Exact same checkout session retried idempotently
+            finalSaleDoc = existing;
+            isDuplicateReturn = true;
+            return;
+          }
 
-    // ---------------------------------------------------------------------------------
-    // STEP 2: AUTHORITATIVE PRODUCT READS & STOCK VERIFICATION
+          // If document exists with a DIFFERENT session, candidate ID was claimed concurrently
+          throw new Error(`CONCURRENCY_RETRY_CLAIMED:${invoiceNo}`);
+        }
+
+        // ---------------------------------------------------------------------------------
+        // STEP 2: AUTHORITATIVE PRODUCT READS & STOCK VERIFICATION
     // ---------------------------------------------------------------------------------
     const productSnapshots: Map<string, { ref: any; doc: ProductDocument }> = new Map();
     const productIds: string[] = [];
@@ -894,8 +950,27 @@ export const processSaleTransaction = async (
       transaction.set(payRef, paymentDoc);
     }
 
-    finalSaleDoc = saleDoc;
-  });
+      finalSaleDoc = saleDoc;
+    });
+    break; // Transaction succeeded! Exit retry loop
+  } catch (err: any) {
+    if (err?.message?.startsWith('CONCURRENCY_RETRY_CLAIMED:')) {
+      retryAttempts--;
+      if (retryAttempts <= 0) {
+        throw new DuplicateSaleError(
+          invoiceNo,
+          cleanSessionId,
+          `Invoice number contention limit reached. Please retry.`
+        );
+      }
+      activeSeqNum++;
+      invoiceNo = generateInvoiceNumber(cleanSessionId, effectiveTerminalId, effectiveInvoiceDate, activeSeqNum);
+      saleRef = doc(db, 'sales', invoiceNo);
+      continue;
+    }
+    throw err;
+  }
+}
 
   const committedSale = finalSaleDoc as SaleDocument | null;
   if (!committedSale) {

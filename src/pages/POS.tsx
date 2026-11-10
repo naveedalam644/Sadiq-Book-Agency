@@ -1730,6 +1730,18 @@ export const POS: React.FC = () => {
                     Clear Cart
                   </button>
                 )}
+                {submissionError.includes('collision') && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSubmissionError(null);
+                      handleCheckout();
+                    }}
+                    className="px-2.5 py-1 bg-[#071F49] hover:bg-[#0c2f6d] text-[#F5B51B] font-black text-[11px] rounded-lg transition-colors shrink-0 cursor-pointer border border-[#F5B51B]/40"
+                  >
+                    Retry Sale Now
+                  </button>
+                )}
               </div>
             )}
 
