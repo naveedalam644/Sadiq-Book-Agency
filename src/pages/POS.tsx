@@ -877,9 +877,9 @@ export const POS: React.FC = () => {
       </div>
 
       {/* Main 2-Column Register Workspace */}
-      <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
+      <div className="flex-1 flex flex-col lg:flex-row overflow-hidden min-h-0">
         {/* Left Column: Product Search & Search Results */}
-        <div className={`flex-1 flex flex-col p-3 sm:p-4 overflow-hidden border-r border-slate-200 bg-white ${mobileTab === 'catalog' ? 'flex' : 'hidden lg:flex'}`}>
+        <div className={`flex-1 flex flex-col p-3 sm:p-4 overflow-hidden border-r border-slate-200 bg-white min-h-0 ${mobileTab === 'catalog' ? 'flex' : 'hidden lg:flex'}`}>
           {/* Search Header */}
           <div className="space-y-3 mb-3">
             <div className="flex items-center gap-2">
@@ -1285,14 +1285,14 @@ export const POS: React.FC = () => {
                 className="px-4 py-2 bg-[#F5B51B] hover:bg-amber-400 text-[#071F49] font-black text-xs rounded-xl flex items-center gap-1.5 shadow-md active:scale-95 transition-all cursor-pointer"
               >
                 <ShoppingCart className="w-4 h-4" />
-                <span>View Cart & Pay &rarr;</span>
+                <span>View Cart & Create Bill &rarr;</span>
               </button>
             </div>
           )}
         </div>
 
         {/* Right Column: Active POS Cart, Customer Pricing Terms, and Checkout */}
-        <div className={`w-full lg:w-[480px] xl:w-[520px] bg-slate-50 flex flex-col h-full border-t lg:border-t-0 border-slate-200 shadow-lg ${mobileTab === 'cart' ? 'flex' : 'hidden lg:flex'}`}>
+        <div className={`w-full lg:w-[480px] xl:w-[520px] bg-slate-50 flex flex-col h-full min-h-0 border-t lg:border-t-0 border-slate-200 shadow-lg ${mobileTab === 'cart' ? 'flex' : 'hidden lg:flex'}`}>
           {/* Mobile Back Button to Catalog */}
           <div className="lg:hidden flex items-center justify-between px-3 py-2 bg-slate-200 border-b border-slate-300 text-xs shrink-0">
             <button
@@ -1350,7 +1350,7 @@ export const POS: React.FC = () => {
           </div>
 
           {/* High-Capacity Compact Cart Items List (Accommodates 10+ items cleanly) */}
-          <div className="flex-1 p-2 sm:p-2.5 overflow-y-auto space-y-1.5 min-h-[360px]">
+          <div className="flex-1 min-h-0 p-2 sm:p-2.5 overflow-y-auto space-y-1.5">
             {cartError && (
               <div className="bg-red-50 border border-red-200 text-red-700 text-xs p-2 rounded-xl flex items-center gap-2">
                 <AlertTriangle className="w-4 h-4 shrink-0 text-red-600" />
@@ -1359,10 +1359,10 @@ export const POS: React.FC = () => {
             )}
 
             {items.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-48 text-center text-slate-400 space-y-2">
+              <div className="flex flex-col items-center justify-center py-6 sm:py-8 text-center text-slate-400 space-y-1.5">
                 <ShoppingCart className="w-8 h-8 text-slate-300" />
                 <p className="text-xs font-semibold text-slate-600">Cart is empty</p>
-                <p className="text-[11px] text-slate-400">Add products from catalog on the left</p>
+                <p className="text-[11px] text-slate-400">Add products from catalog on the left to create bill</p>
               </div>
             ) : (
               items.map((item) => (
@@ -1469,10 +1469,10 @@ export const POS: React.FC = () => {
           </div>
 
           {/* Cart Bottom Financial Summary & Payment Box */}
-          <div className="p-4 bg-white border-t border-slate-200 space-y-3 shrink-0 shadow-inner">
+          <div className="p-2.5 sm:p-3 bg-white border-t border-slate-200 space-y-2 shrink-0 shadow-inner max-h-[65vh] overflow-y-auto">
             {/* Overall Bill Discount Control */}
             {items.length > 0 && (
-              <div className="p-2.5 bg-slate-50 border border-slate-200/90 rounded-xl space-y-2">
+              <div className="p-2 bg-slate-50 border border-slate-200/90 rounded-xl space-y-1.5">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
                     <Tag className="w-3.5 h-3.5 text-[#071F49]" />
@@ -1515,7 +1515,7 @@ export const POS: React.FC = () => {
                       value={globalDiscountValue}
                       onChange={(e) => handleGlobalDiscountChange(e.target.value)}
                       disabled={isReadOnly}
-                      className="w-full pl-3 pr-9 py-1.5 text-xs font-bold border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#071F49] bg-white text-slate-800"
+                      className="w-full pl-3 pr-9 py-1 text-xs font-bold border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#071F49] bg-white text-slate-800"
                     />
                     <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">
                       {globalDiscountMode === 'percent' ? '%' : 'PKR'}
@@ -1527,7 +1527,7 @@ export const POS: React.FC = () => {
                       type="button"
                       onClick={handleClearGlobalDiscount}
                       disabled={isReadOnly}
-                      className="px-2.5 py-1.5 text-xs font-bold text-rose-600 hover:bg-rose-50 border border-rose-200 rounded-lg transition cursor-pointer"
+                      className="px-2 py-1 text-xs font-bold text-rose-600 hover:bg-rose-50 border border-rose-200 rounded-lg transition cursor-pointer"
                       title="Reset Overall Discount"
                     >
                       Reset
@@ -1544,7 +1544,7 @@ export const POS: React.FC = () => {
                       type="button"
                       onClick={() => handlePresetDiscountClick(preset)}
                       disabled={isReadOnly}
-                      className={`px-2 py-0.5 text-[11px] font-bold rounded-md border transition cursor-pointer ${
+                      className={`px-1.5 py-0.5 text-[10px] font-bold rounded-md border transition cursor-pointer ${
                         globalDiscountMode === 'percent' && parseFloat(globalDiscountValue) === preset
                           ? 'bg-[#071F49] text-[#F5B51B] border-[#071F49] shadow-2xs'
                           : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100 hover:border-slate-300'
@@ -1558,7 +1558,7 @@ export const POS: React.FC = () => {
             )}
 
             {/* Subtotals */}
-            <div className="space-y-1 text-xs">
+            <div className="space-y-0.5 text-xs">
               <div className="flex justify-between text-slate-600">
                 <span>Items ({totalItemCount}):</span>
                 <span>PKR {subtotal.toFixed(2)}</span>
@@ -1571,7 +1571,7 @@ export const POS: React.FC = () => {
                 </div>
               )}
 
-              <div className="flex justify-between text-base font-black text-slate-900 border-t border-slate-200 pt-1.5">
+              <div className="flex justify-between text-sm sm:text-base font-black text-slate-900 border-t border-slate-200 pt-1">
                 <span>GRAND TOTAL:</span>
                 <span className="text-[#071F49]">PKR {grandTotal.toFixed(2)}</span>
               </div>
@@ -1582,7 +1582,7 @@ export const POS: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setPaymentMethod('cash')}
-                className={`flex-1 py-1.5 rounded-lg flex items-center justify-center gap-1.5 transition-colors ${
+                className={`flex-1 py-1 rounded-lg flex items-center justify-center gap-1.5 transition-colors ${
                   paymentMethod === 'cash' ? 'bg-[#071F49] text-white shadow-sm' : 'text-slate-600 hover:bg-slate-200'
                 }`}
               >
@@ -1593,7 +1593,7 @@ export const POS: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setPaymentMethod('bank_transfer')}
-                className={`flex-1 py-1.5 rounded-lg flex items-center justify-center gap-1.5 transition-colors ${
+                className={`flex-1 py-1 rounded-lg flex items-center justify-center gap-1.5 transition-colors ${
                   paymentMethod === 'bank_transfer'
                     ? 'bg-[#071F49] text-white shadow-sm'
                     : 'text-slate-600 hover:bg-slate-200'
@@ -1607,7 +1607,7 @@ export const POS: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setPaymentMethod('credit')}
-                  className={`flex-1 py-1.5 rounded-lg flex items-center justify-center gap-1.5 transition-colors ${
+                  className={`flex-1 py-1 rounded-lg flex items-center justify-center gap-1.5 transition-colors ${
                     paymentMethod === 'credit'
                       ? 'bg-amber-600 text-white shadow-sm'
                       : 'text-slate-600 hover:bg-slate-200'
@@ -1621,7 +1621,7 @@ export const POS: React.FC = () => {
 
             {/* Cash Tendered & Change Returned (When Cash Mode) */}
             {paymentMethod === 'cash' && (
-              <div className="space-y-2 bg-slate-50 p-2.5 rounded-xl border border-slate-200">
+              <div className="space-y-1.5 bg-slate-50 p-2 rounded-xl border border-slate-200">
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-xs font-semibold text-slate-700">Cash Received:</span>
                   <input
@@ -1630,7 +1630,7 @@ export const POS: React.FC = () => {
                     value={cashTendered}
                     onChange={(e) => setCashTendered(e.target.value)}
                     placeholder="0"
-                    className="w-28 text-right font-black text-xs border border-slate-300 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-[#071F49]"
+                    className="w-28 text-right font-black text-xs border border-slate-300 rounded px-2 py-0.5 focus:outline-none focus:ring-1 focus:ring-[#071F49]"
                   />
                 </div>
 
@@ -1656,7 +1656,7 @@ export const POS: React.FC = () => {
                 </div>
 
                 {changeReturned > 0 && (
-                  <div className="flex justify-between text-xs font-bold text-emerald-700 pt-1 border-t border-slate-200">
+                  <div className="flex justify-between text-xs font-bold text-emerald-700 pt-0.5 border-t border-slate-200">
                     <span>Change to Return:</span>
                     <span>PKR {changeReturned.toFixed(2)}</span>
                   </div>
@@ -1709,7 +1709,7 @@ export const POS: React.FC = () => {
 
             {/* Submission Error Banner */}
             {submissionError && (
-              <div className="bg-red-50 border border-red-200 text-red-700 text-xs p-2.5 rounded-xl flex items-center justify-between gap-2">
+              <div className="bg-red-50 border border-red-200 text-red-700 text-xs p-2 rounded-xl flex items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
                   <AlertTriangle className="w-4 h-4 shrink-0 text-red-600" />
                   <span>
@@ -1734,32 +1734,44 @@ export const POS: React.FC = () => {
             )}
 
             {/* Clear & Checkout Buttons */}
-            <div className="flex gap-2">
+            <div className="flex gap-2 pt-1 shrink-0">
               <button
                 type="button"
                 onClick={clearCart}
                 disabled={items.length === 0 || isReadOnly || isSubmitting}
-                className="p-3 border border-slate-300 hover:bg-slate-100 text-slate-600 rounded-xl transition-colors disabled:opacity-40"
+                className="p-2.5 border border-slate-300 hover:bg-slate-100 text-slate-600 rounded-xl transition-colors disabled:opacity-40 cursor-pointer shrink-0"
                 title="Clear Cart"
               >
-                <RotateCcw className="w-5 h-5" />
+                <RotateCcw className="w-4 h-4" />
               </button>
 
               <button
                 type="button"
                 onClick={() => handleCheckout()}
                 disabled={!canCheckout || isSubmitting}
-                className="flex-1 py-3 bg-[#071F49] hover:bg-[#0c2f6d] text-white rounded-xl font-bold text-sm flex items-center justify-center gap-2 shadow-lg transition-all active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
+                className={`flex-1 py-3 px-3 rounded-xl font-black text-xs sm:text-sm flex items-center justify-center gap-2 shadow-md transition-all active:scale-[0.98] ${
+                  canCheckout && !isSubmitting
+                    ? 'bg-[#F5B51B] hover:bg-[#F8CE4E] text-[#071F49] cursor-pointer shadow-amber-500/20 hover:shadow-lg ring-2 ring-[#071F49]/10'
+                    : 'bg-[#071F49] text-white opacity-60 cursor-not-allowed'
+                }`}
               >
                 {isSubmitting ? (
                   <>
-                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
                     <span>Processing Sale...</span>
+                  </>
+                ) : items.length === 0 ? (
+                  <>
+                    <ShoppingCart className="w-4 h-4 text-[#F5B51B]" />
+                    <span>Create Bill / Complete Sale (Add Items)</span>
                   </>
                 ) : (
                   <>
-                    <span>Complete Sale (PKR {grandTotal.toFixed(2)})</span>
-                    <ArrowRight className="w-4 h-4 text-[#F5B51B]" />
+                    <span>Create Bill / Complete Sale</span>
+                    <span className="bg-[#071F49] text-white px-2 py-0.5 rounded text-xs font-black">
+                      PKR {grandTotal.toFixed(2)}
+                    </span>
+                    <ArrowRight className="w-4 h-4 text-[#071F49]" />
                   </>
                 )}
               </button>

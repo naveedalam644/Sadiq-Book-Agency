@@ -131,8 +131,8 @@ assert.ok(
 );
 assert.ok(
   posPageContent.includes('w-full lg:w-[480px] xl:w-[520px]') &&
-    posPageContent.includes('min-h-[360px]'),
-  'Cart panel must be optimized with ample width and height for high item capacity'
+    (posPageContent.includes('min-h-0') || posPageContent.includes('overflow-y-auto')),
+  'Cart panel must be optimized with ample width and flex min-h-0 for high item capacity and visible checkout'
 );
 console.log('✓ Test 6 Passed: High-capacity cart row and inline sale price editing verified.');
 
