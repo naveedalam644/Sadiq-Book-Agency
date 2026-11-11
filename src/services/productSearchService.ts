@@ -133,6 +133,55 @@ export const searchProductBySku = async (
 };
 
 /**
+ * Search product by EXACT Barcode (EAN-13, ISBN, UPC, Code 128) or fallback to SKU.
+ * Highly optimized for handheld hardware barcode guns and mobile camera scanners.
+ */
+export const searchProductByBarcodeOrSku = async (
+  code: string,
+  customDb: Firestore | null = db
+): Promise<ProductSearchResult | null> => {
+  const cleanCode = code.trim();
+  if (!cleanCode || !customDb) return null;
+
+  const cacheKey = `barcode_lookup:${cleanCode.toLowerCase()}`;
+  const cached = getCache<ProductSearchResult>(cacheKey);
+  if (cached) return cached;
+
+  try {
+    // 1. Try exact barcode match (case-sensitive and standard)
+    const barcodeQuery = query(
+      collection(customDb, 'products'),
+      where('barcode', '==', cleanCode),
+      limit(1)
+    );
+    const barcodeSnap = await getDocs(barcodeQuery);
+    if (!barcodeSnap.empty) {
+      const docSnap = barcodeSnap.docs[0];
+      const data = docSnap.data() as ProductDocument;
+      const result: ProductSearchResult = {
+        ...data,
+        id: docSnap.id,
+        publisherName: resolvePublisherSnapshot(data),
+      };
+      setCache(cacheKey, result);
+      return result;
+    }
+
+    // 2. Try SKU lookup as fallback
+    const skuResult = await searchProductBySku(cleanCode, customDb);
+    if (skuResult) {
+      setCache(cacheKey, skuResult);
+      return skuResult;
+    }
+
+    return null;
+  } catch (err) {
+    console.warn('Barcode lookup error:', err);
+    return null;
+  }
+};
+
+/**
  * Search products by name using Firestore prefix range query on titleSearch.
  * Rules:
  * - Minimum 2 characters required (shorter inputs return empty results with 0 Firestore reads).

@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Sparkles, Building2, Layers, Plus, FileSpreadsheet } from 'lucide-react';
+import { Sparkles, Building2, Layers, Plus, FileSpreadsheet, ScanBarcode, Camera } from 'lucide-react';
 import { Modal } from '../common/Modal';
 import { Input } from '../common/Input';
 import { Select } from '../common/Select';
 import { Button } from '../common/Button';
+import { BarcodeScannerModal } from '../common/BarcodeScannerModal';
 import type {
   ProductDocument,
   ItemClassification,
@@ -39,6 +40,8 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
 }) => {
   const [title, setTitle] = useState('');
   const [sku, setSku] = useState('');
+  const [barcode, setBarcode] = useState('');
+  const [isBarcodeModalOpen, setIsBarcodeModalOpen] = useState(false);
   const [classification, setClassification] = useState<ItemClassification>('book');
   const [categoryId, setCategoryId] = useState('');
 
@@ -95,6 +98,7 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
     if (initialData) {
       setTitle(initialData.title);
       setSku(initialData.sku);
+      setBarcode(initialData.barcode || '');
       setClassification(initialData.classification || 'book');
 
       const matchedCat = categories.find(
@@ -158,6 +162,7 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
       // Default new product values
       setTitle('');
       setSku('');
+      setBarcode('');
       setClassification('book');
       setCategoryId(categories.length > 0 ? categories[0].id : 'cat_primary');
       setSelectedPublisherId('');
@@ -353,7 +358,7 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
     const payload: CreateProductInput = {
       title: title.trim(),
       sku: sku.trim().toUpperCase(),
-      ...(initialData?.barcode ? { barcode: initialData.barcode } : {}),
+      barcode: barcode.trim() || undefined,
       classification,
       categoryId,
       categoryName: selectedCategory ? selectedCategory.name : '',
@@ -475,31 +480,68 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
           required
         />
 
-        {/* SKU with Auto-generate */}
-        <div>
-          <div className="flex items-center justify-between mb-1.5">
-            <label className="block text-xs font-semibold uppercase tracking-wider text-slate-700">
-              SKU (Stock Keeping Unit) <span className="text-rose-500">*</span>
-            </label>
-            <button
-              type="button"
-              onClick={handleAutoSku}
-              className="text-xs text-[#071F49] hover:underline flex items-center gap-1 font-semibold"
-            >
-              <Sparkles className="w-3 h-3 text-[#071F49]" />
-              Auto-Generate
-            </button>
+        {/* SKU & Barcode Inputs */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+          {/* SKU with Auto-generate */}
+          <div>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-700">
+                SKU (Stock Keeping Unit) <span className="text-rose-500">*</span>
+              </label>
+              <button
+                type="button"
+                onClick={handleAutoSku}
+                className="text-xs text-[#071F49] hover:underline flex items-center gap-1 font-semibold cursor-pointer"
+              >
+                <Sparkles className="w-3 h-3 text-[#071F49]" />
+                Auto-Generate
+              </button>
+            </div>
+            <Input
+              placeholder={isNotebookOrRegister ? 'e.g. NB-A4-100' : 'e.g. BK-ENG-1042'}
+              value={sku}
+              onChange={(e) => {
+                setSku(e.target.value.toUpperCase());
+                setSkuError(null);
+              }}
+              error={skuError || undefined}
+              required
+            />
           </div>
-          <Input
-            placeholder={isNotebookOrRegister ? 'e.g. NB-A4-100' : 'e.g. BK-ENG-1042'}
-            value={sku}
-            onChange={(e) => {
-              setSku(e.target.value.toUpperCase());
-              setSkuError(null);
-            }}
-            error={skuError || undefined}
-            required
-          />
+
+          {/* Barcode (EAN / UPC / ISBN) with Scan Button */}
+          <div>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-700">
+                Barcode / ISBN (Optional)
+              </label>
+              <button
+                type="button"
+                onClick={() => setIsBarcodeModalOpen(true)}
+                className="text-[11px] text-[#071F49] flex items-center gap-1 font-bold cursor-pointer bg-amber-100 hover:bg-amber-200 text-amber-900 px-2 py-0.5 rounded border border-amber-300 transition"
+                title="Scan barcode from book with mobile camera or scanner"
+              >
+                <ScanBarcode className="w-3.5 h-3.5 text-amber-800" />
+                Scan
+              </button>
+            </div>
+            <div className="relative">
+              <Input
+                placeholder="Scan or enter barcode (e.g. 9789691234567)"
+                value={barcode}
+                onChange={(e) => setBarcode(e.target.value)}
+                helperText="Type, scan with gun, or use camera"
+              />
+              <button
+                type="button"
+                onClick={() => setIsBarcodeModalOpen(true)}
+                className="absolute right-2 top-2 p-1 text-slate-500 hover:text-[#071F49] hover:bg-slate-100 rounded cursor-pointer"
+                title="Open Camera Scanner"
+              >
+                <Camera className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
         </div>
 
         {/* Notebook & Register Direct Specifications (Size, Sheets, Grammage) */}
@@ -948,6 +990,21 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
           />
         </div>
       </form>
+
+      {/* Camera Barcode Scanner Modal */}
+      {isBarcodeModalOpen && (
+        <BarcodeScannerModal
+          isOpen={isBarcodeModalOpen}
+          onClose={() => setIsBarcodeModalOpen(false)}
+          onScan={(scannedCode) => {
+            setBarcode(scannedCode);
+            setIsBarcodeModalOpen(false);
+          }}
+          mode="single"
+          title="Scan Product Barcode"
+          instructions="Point mobile camera at the book's printed barcode (EAN-13, ISBN, etc.)"
+        />
+      )}
     </Modal>
   );
 };

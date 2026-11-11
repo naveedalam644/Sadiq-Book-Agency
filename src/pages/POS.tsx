@@ -24,6 +24,7 @@ import {
   Percent,
   PauseCircle,
   X,
+  ScanBarcode,
 } from 'lucide-react';
 import { WhatsAppIcon } from '../components/common/WhatsAppIcon';
 import { useAuth } from '../hooks/useAuth';
@@ -31,6 +32,7 @@ import { usePOSCart } from '../hooks/usePOSCart';
 import {
   searchProductsByName,
   searchProductBySku,
+  searchProductByBarcodeOrSku,
   getProductsByHierarchy,
   getProductsByNotebookFilter,
   debounceSearch,
@@ -46,6 +48,9 @@ import { AdminOverrideModal } from '../components/pos/AdminOverrideModal';
 import { ProductHistoryModal } from '../components/inventory/ProductHistoryModal';
 import { SchoolSyllabusSetModal } from '../components/pos/SchoolSyllabusSetModal';
 import { ProductFormModal } from '../components/inventory/ProductFormModal';
+import { BarcodeScannerModal } from '../components/common/BarcodeScannerModal';
+import { useBarcodeScanner } from '../hooks/useBarcodeScanner';
+import { playScannerBeep, playScannerErrorTone } from '../utils/soundEffects';
 import { STANDARD_CLASSES } from '../services/syllabusService';
 import { getCategories } from '../services/categoryService';
 import {
@@ -145,6 +150,33 @@ export const POS: React.FC = () => {
     }
   };
 
+  // 1c. Barcode Scanner State & Handlers (Mobile Camera & Handheld Gun)
+  const [isScannerModalOpen, setIsScannerModalOpen] = useState(false);
+
+  const handleBarcodeScanned = useCallback(
+    async (scannedCode: string) => {
+      try {
+        const clean = scannedCode.trim();
+        if (!clean) return;
+
+        const product = await searchProductByBarcodeOrSku(clean);
+        if (product) {
+          addProduct(product, 1);
+          playScannerBeep();
+          toastSuccess(`Scanned & Added: "${product.title}"`);
+        } else {
+          playScannerErrorTone();
+          toastError(`No product found with barcode "${clean}". Quick Add is available via Add Product.`);
+        }
+      } catch (err) {
+        console.error('Barcode scan error in POS:', err);
+        playScannerErrorTone();
+        toastError('Failed to process barcode scan.');
+      }
+    },
+    [addProduct, toastSuccess, toastError]
+  );
+
   // 2. Search & Filter Category States
   const [searchTerm, setSearchTerm] = useState('');
   const [filterCategory, setFilterCategory] = useState<'book' | 'notebook_register' | 'all'>('book');
@@ -199,6 +231,12 @@ export const POS: React.FC = () => {
   const [activeAdminOverride, setActiveAdminOverride] = useState<AdminCreditOverride | undefined>(undefined);
   const [customDueDate, setCustomDueDate] = useState<string>('');
   const [mobileTab, setMobileTab] = useState<'catalog' | 'cart'>('catalog');
+
+  // Hardware USB/Bluetooth Barcode Scanner Gun listener
+  useBarcodeScanner({
+    onScan: handleBarcodeScanned,
+    enabled: !isSubmitting && !isReceiptModalOpen && !isAddProductModalOpen,
+  });
 
   const customerCreditDays = customer?.creditDays;
   const projectedDueDate = useMemo(() => {
@@ -1016,6 +1054,17 @@ export const POS: React.FC = () => {
                   </div>
                 )}
               </div>
+
+              <button
+                type="button"
+                onClick={() => setIsScannerModalOpen(true)}
+                className="shrink-0 flex items-center gap-1.5 px-3 py-2.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-black rounded-xl text-xs shadow-xs hover:shadow transition-all cursor-pointer border border-amber-400"
+                title="Scan Barcode using Mobile Camera or Scanner Gun"
+              >
+                <ScanBarcode className="w-4 h-4 text-slate-950" />
+                <span className="hidden sm:inline">Scan Barcode</span>
+                <span className="sm:hidden">Scan</span>
+              </button>
 
               <button
                 type="button"
@@ -2224,6 +2273,17 @@ export const POS: React.FC = () => {
         onSubmit={handleSaveProduct}
         categories={categories}
       />
+
+      {isScannerModalOpen && (
+        <BarcodeScannerModal
+          isOpen={isScannerModalOpen}
+          onClose={() => setIsScannerModalOpen(false)}
+          onScan={handleBarcodeScanned}
+          mode="continuous"
+          title="POS Camera Barcode Scanner"
+          instructions="Point mobile camera at book barcode. Scanned books will automatically be added to your bill."
+        />
+      )}
     </div>
   );
 };
