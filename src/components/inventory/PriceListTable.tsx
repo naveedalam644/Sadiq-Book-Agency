@@ -201,13 +201,13 @@ export const PriceListTable: React.FC<PriceListTableProps> = ({
           </td>
           <td style="padding: 6px 8px; font-family: monospace; font-size: 10px; color: #334155;">${p.sku}</td>
           <td style="padding: 6px 8px; text-align: right; font-family: monospace; font-weight: bold; color: #071F49;">
-            Rs. ${Number(p.retailPrice || p.mrp || 0).toLocaleString()}
+            ${p.classification !== 'book' ? (p.lastSoldPrice ? `Rs. ${p.lastSoldPrice.toLocaleString()} (Last)` : 'Open at POS') : `Rs. ${Number(p.retailPrice || p.mrp || 0).toLocaleString()}`}
           </td>
           <td style="padding: 6px 8px; text-align: right; font-family: monospace; color: #334155;">
             Rs. ${Number(p.costPrice || 0).toLocaleString()}
           </td>
           <td style="padding: 6px 8px; text-align: right; font-family: monospace; font-weight: bold; color: #b45309;">
-            Rs. ${Number(p.wholesalePrice || p.retailPrice || 0).toLocaleString()}
+            ${p.classification !== 'book' ? '—' : `Rs. ${Number(p.wholesalePrice || p.retailPrice || 0).toLocaleString()}`}
           </td>
         </tr>
       `
@@ -326,6 +326,18 @@ export const PriceListTable: React.FC<PriceListTableProps> = ({
       header: 'Retail MRP (Rs.)',
       align: 'right',
       render: (row) => {
+        if (row.classification && row.classification !== 'book') {
+          return (
+            <div className="flex flex-col items-end">
+              <span className="font-mono text-xs font-bold text-amber-900 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
+                {row.lastSoldPrice ? formatCurrency(row.lastSoldPrice) : 'Open at POS'}
+              </span>
+              <span className="text-[10px] text-slate-400 mt-0.5">
+                {row.lastSoldPrice ? 'Last POS Rate' : 'Set at Counter'}
+              </span>
+            </div>
+          );
+        }
         const mrp = Number(row.retailPrice || row.mrp || row.originalPrice) || 0;
         return (
           <span className="font-mono text-sm font-black text-[#071F49]">
@@ -349,6 +361,13 @@ export const PriceListTable: React.FC<PriceListTableProps> = ({
       header: 'Wholesale (Rs.)',
       align: 'right',
       render: (row) => {
+        if (row.classification && row.classification !== 'book') {
+          return (
+            <span className="font-mono text-xs text-slate-400 italic">
+              Dynamic at POS
+            </span>
+          );
+        }
         const wholesale = Number(row.wholesalePrice) || Number(row.retailPrice) || 0;
         return (
           <span className="font-mono text-xs font-bold text-amber-900 bg-amber-50/80 px-2 py-0.5 rounded border border-amber-200/80">

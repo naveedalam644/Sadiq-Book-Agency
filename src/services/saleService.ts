@@ -277,6 +277,7 @@ export interface ProcessSaleItemInput {
   // Client draft values for verification
   clientUnitPrice?: number;
   clientDiscountRate?: number;
+  clientSellingPrice?: number; // Direct entered rate for stationery or overridden book price
 }
 
 export interface ProcessSaleInput {
@@ -491,14 +492,15 @@ export const processSaleTransaction = async (
 
   let saleRef = doc(db, 'sales', invoiceNo);
 
-  // Pre-load active batches outside transaction for concurrency locking
+  // Pre-load active batches outside transaction in parallel for maximum counter speed
   const preloadedBatchesMap = new Map<string, StockBatchDocument[]>();
-  for (const item of input.items) {
-    if (item.productId && !preloadedBatchesMap.has(item.productId)) {
-      const batches = await getActiveBatchesForProduct(item.productId);
-      preloadedBatchesMap.set(item.productId, batches);
-    }
-  }
+  const uniqueProductIds = Array.from(new Set(input.items.map((item) => item.productId).filter(Boolean)));
+  const batchResults = await Promise.all(
+    uniqueProductIds.map((pid) => getActiveBatchesForProduct(pid))
+  );
+  uniqueProductIds.forEach((pid, idx) => {
+    preloadedBatchesMap.set(pid, batchResults[idx]);
+  });
 
   let finalSaleDoc: SaleDocument | null = null;
   let isDuplicateReturn = false;
@@ -654,43 +656,75 @@ export const processSaleTransaction = async (
           ? fifoDepletion.effectiveUnitCost
           : (Number(prodData.costPrice) || 0);
 
-      // Base price before customer discount is always Original Price / MRP
+      const isBook = prodData.classification === 'book';
+
       let unitPrice = originalMrp;
       let discountRate = 0;
+      let discountAmount = 0;
+      let effectivePrice = 0;
 
-      // 1. Bill-level customer discount entered by user takes precedence:
-      // "Allow the authorized user to enter the discount percentage for each product line.
-      // Preserve existing customer-specific discount functionality as an optional existing rule,
-      // but never silently override the manually selected bill discount."
-      if (typeof item.clientDiscountRate === 'number' && item.clientDiscountRate >= 0 && item.clientDiscountRate <= 100) {
-        discountRate = item.clientDiscountRate;
-      } else {
-        // Fallback to existing customer-specific discount rules
-        const customDisc = customDiscountMap.get(item.productId);
-        if (customDisc) {
-          if (customDisc.discountType === 'fixed_rate') {
-            const base = customDisc.basePriceType === 'wholesale' ? wholesalePrice : originalMrp;
-            const fixedRate = Math.max(0, Number(customDisc.discountValue) || 0);
-            const savings = Math.max(0, base - fixedRate);
-            discountRate = base > 0 ? Math.round((savings / base) * 1000) / 10 : 0;
-            unitPrice = base;
-          } else {
-            unitPrice = customDisc.basePriceType === 'wholesale' ? wholesalePrice : originalMrp;
-            discountRate = Math.max(0, Math.min(100, Number(customDisc.discountValue) || 0));
-          }
-        } else if (customerDoc && customerDoc.type === 'marketshop' && (customerDoc.discountPercentage || 0) > 0) {
-          discountRate = Math.max(0, Math.min(100, Number(customerDoc.discountPercentage)));
-        } else if (customerDoc && customerDoc.type === 'wholesaler' && wholesalePrice < originalMrp) {
-          // If wholesale price difference exists and no explicit rate was set
-          const savings = Math.max(0, originalMrp - wholesalePrice);
-          discountRate = originalMrp > 0 ? Math.round((savings / originalMrp) * 1000) / 10 : 0;
-        } else {
-          discountRate = 0;
+      if (!isBook) {
+        // Model 2: NOTEBOOK, REGISTER, OTHER STATIONERY
+        // Validate selling price from cashier:
+        // Cashier enters the actual selling price for each stationery line.
+        // It must be > 0.
+        // Discounts are strictly 0.
+        const manualSellingPrice =
+          typeof item.clientSellingPrice === 'number' && item.clientSellingPrice > 0
+            ? Math.round(item.clientSellingPrice * 100) / 100
+            : typeof item.clientUnitPrice === 'number' && item.clientUnitPrice > 0
+            ? Math.round(item.clientUnitPrice * 100) / 100
+            : prodData.lastSoldPrice || Number(prodData.retailPrice) || 0;
+
+        if (manualSellingPrice <= 0) {
+          throw new Error(
+            `Valid selling price is required for stationery item "${prodData.title}". Selling price cannot be zero or negative.`
+          );
         }
+
+        unitPrice = manualSellingPrice;
+        effectivePrice = manualSellingPrice;
+        discountRate = 0;
+        discountAmount = 0;
+      } else {
+        // Model 1: BOOKS
+        // Uses MRP, Publisher Discount, and Customer Discount
+        unitPrice = originalMrp;
+
+        if (
+          typeof item.clientDiscountRate === 'number' &&
+          item.clientDiscountRate >= 0 &&
+          item.clientDiscountRate <= 100
+        ) {
+          discountRate = item.clientDiscountRate;
+        } else {
+          // Fallback to customer-specific discounts
+          const customDisc = customDiscountMap.get(item.productId);
+          if (customDisc) {
+            if (customDisc.discountType === 'fixed_rate') {
+              const base = customDisc.basePriceType === 'wholesale' ? wholesalePrice : originalMrp;
+              const fixedRate = Math.max(0, Number(customDisc.discountValue) || 0);
+              const savings = Math.max(0, base - fixedRate);
+              discountRate = base > 0 ? Math.round((savings / base) * 1000) / 10 : 0;
+              unitPrice = base;
+            } else {
+              unitPrice = customDisc.basePriceType === 'wholesale' ? wholesalePrice : originalMrp;
+              discountRate = Math.max(0, Math.min(100, Number(customDisc.discountValue) || 0));
+            }
+          } else if (customerDoc && customerDoc.type === 'marketshop' && (customerDoc.discountPercentage || 0) > 0) {
+            discountRate = Math.max(0, Math.min(100, Number(customerDoc.discountPercentage)));
+          } else if (customerDoc && customerDoc.type === 'wholesaler' && wholesalePrice < originalMrp) {
+            const savings = Math.max(0, originalMrp - wholesalePrice);
+            discountRate = originalMrp > 0 ? Math.round((savings / originalMrp) * 1000) / 10 : 0;
+          } else {
+            discountRate = 0;
+          }
+        }
+
+        discountAmount = Math.round(unitPrice * (discountRate / 100) * 100) / 100;
+        effectivePrice = Math.max(0, Math.round((unitPrice - discountAmount) * 100) / 100);
       }
 
-      const discountAmount = Math.round(unitPrice * (discountRate / 100) * 100) / 100;
-      const effectivePrice = Math.max(0, Math.round((unitPrice - discountAmount) * 100) / 100);
       const lineTotal = Math.round(effectivePrice * qty * 100) / 100;
       const rawSubtotal = Math.round(unitPrice * qty * 100) / 100;
       const rawDiscount = Math.round(discountAmount * qty * 100) / 100;
@@ -712,16 +746,20 @@ export const processSaleTransaction = async (
         productId: item.productId,
         productName: prodData.title,
         sku: prodData.sku,
+        classification: prodData.classification || 'book',
+        isDiscountEligible: isBook,
         publisherName: authoritativePublisher,
+        seriesName: prodData.seriesName ? prodData.seriesName.trim() : undefined,
+        targetClass: (prodData.targetClass || prodData.className) ? (prodData.targetClass || prodData.className)?.trim() : undefined,
         quantity: qty,
         costPrice: effectiveCostPrice, // Historical purchase cost snapshot (actual publisher-discounted cost)
-        unitPrice, // Original MRP
-        originalPrice: unitPrice, // Explicit Original MRP snapshot
-        mrp: unitPrice, // Explicit MRP snapshot
-        discountRate, // Customer discount percentage applied
+        unitPrice, // Original MRP for books, or direct selling rate for stationery
+        originalPrice: isBook ? unitPrice : undefined,
+        mrp: isBook ? unitPrice : undefined,
+        discountRate, // Customer discount percentage applied (0 for stationery)
         discountPercent: discountRate, // Snapshot alias
-        discountAmount, // Customer monetary discount subtracted per unit
-        effectivePrice, // Final selling price after customer discount
+        discountAmount, // Customer monetary discount subtracted per unit (0 for stationery)
+        effectivePrice, // Final selling price
         sellingPrice: effectivePrice, // Snapshot alias
         lineTotal, // Final line total
         batchesDepleted: fifoDepletion.depletedBatches, // Snapshot of exact batch depletions for return reversal
@@ -882,10 +920,13 @@ export const processSaleTransaction = async (
       const newStock = previousStock - item.quantity;
       const isLowStock = newStock <= lowThreshold;
 
+      const isStationery = prodRecord.doc.classification && prodRecord.doc.classification !== 'book';
+
       transaction.update(prodRecord.ref, {
         currentStock: newStock,
         isLowStock,
         lastSaleId: invoiceNo, // Links write to sale via getAfter()
+        ...(isStationery && item.effectivePrice > 0 ? { lastSoldPrice: item.effectivePrice } : {}),
         updatedAt: now,
       });
 

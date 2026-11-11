@@ -150,6 +150,7 @@ export interface ProductDocument {
   publisherDiscountPercent?: number; // Manually entered product-level publisher discount % (e.g. 50%)
   wholesalePrice?: number; // Maintained for backward compatibility (defaults to retailPrice)
   marketShopPrice?: number; // Custom selling price for Market Shop customers
+  lastSoldPrice?: number; // Last customer selling price used at POS counter (convenience default)
   currentStock: number;
   lowStockThreshold: number;
   unit: string; // 'piece', 'bundle', 'dozen', 'box'
@@ -247,7 +248,11 @@ export interface SaleItem {
   productId: string;
   productName: string;
   sku: string;
+  classification?: ItemClassification; // Product classification at time of sale
+  isDiscountEligible?: boolean; // True for books, strictly false for stationery
   publisherName?: string; // Authoritative historical snapshot taken at time of sale
+  seriesName?: string; // Historical series snapshot taken at time of sale
+  targetClass?: string; // Academic class snapshot (e.g. "Class 9", "Play Group")
   quantity: number;
   costPrice: number; // Historical purchase cost snapshot at time of sale (FIFO batch unit cost)
   unitPrice: number; // Original Price / MRP before customer discount

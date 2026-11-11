@@ -42,18 +42,19 @@ export const PriceEditModal: React.FC<PriceEditModalProps> = ({
 
   useEffect(() => {
     if (product) {
+      const isBook = product.classification === 'book';
       const mrp = Number(product.retailPrice || product.mrp || product.originalPrice) || 0;
       const pubDisc = typeof product.publisherDiscountPercent === 'number'
         ? product.publisherDiscountPercent
         : (mrp > 0 && product.costPrice > 0 ? Math.max(0, Math.round(((mrp - product.costPrice) / mrp) * 100)) : 0);
-      const cost = Number(product.costPrice) || Math.round((mrp * (1 - pubDisc / 100)) * 100) / 100;
+      const cost = Number(product.costPrice) || (isBook ? Math.round((mrp * (1 - pubDisc / 100)) * 100) / 100 : 0);
       const wholesale = Number(product.wholesalePrice) || mrp;
 
       setRetailPrice(mrp);
-      setPublisherDiscountPercent(pubDisc);
+      setPublisherDiscountPercent(isBook ? pubDisc : 0);
       setCostPrice(cost);
       setWholesalePrice(wholesale);
-      setIsManualCost(false);
+      setIsManualCost(!isBook);
       setValidationError(null);
     }
   }, [product, isOpen]);
@@ -61,7 +62,7 @@ export const PriceEditModal: React.FC<PriceEditModalProps> = ({
   // Recalculate cost automatically when MRP or pub discount changes (if manual override is false)
   const handleRetailPriceChange = (val: number) => {
     setRetailPrice(val);
-    if (!isManualCost) {
+    if (!isManualCost && product?.classification === 'book') {
       const calcCost = Math.round((val * (1 - publisherDiscountPercent / 100)) * 100) / 100;
       setCostPrice(calcCost);
     }
@@ -70,7 +71,7 @@ export const PriceEditModal: React.FC<PriceEditModalProps> = ({
   const handlePubDiscountChange = (val: number) => {
     const disc = Math.max(0, Math.min(100, val));
     setPublisherDiscountPercent(disc);
-    if (!isManualCost) {
+    if (!isManualCost && product?.classification === 'book') {
       const calcCost = Math.round((retailPrice * (1 - disc / 100)) * 100) / 100;
       setCostPrice(calcCost);
     }
@@ -78,6 +79,7 @@ export const PriceEditModal: React.FC<PriceEditModalProps> = ({
 
   if (!product) return null;
 
+  const isBook = product.classification === 'book';
   const currentStock = Number(product.currentStock) || 0;
   const oldMrp = Number(product.retailPrice || product.mrp || product.originalPrice) || 0;
   const oldCost = Number(product.costPrice) || 0;
@@ -90,16 +92,20 @@ export const PriceEditModal: React.FC<PriceEditModalProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (retailPrice < 0) {
-      setValidationError('Retail Price (MRP) cannot be negative.');
+    if (isBook && retailPrice <= 0) {
+      setValidationError('Retail Price (MRP) is required and must be greater than zero for books.');
       return;
     }
-    if (publisherDiscountPercent < 0 || publisherDiscountPercent > 100) {
+    if (isBook && (publisherDiscountPercent < 0 || publisherDiscountPercent > 100)) {
       setValidationError('Publisher discount must be between 0% and 100%.');
       return;
     }
     if (costPrice < 0) {
       setValidationError('Cost price cannot be negative.');
+      return;
+    }
+    if (!isBook && costPrice <= 0) {
+      setValidationError('Purchase cost price is required for stationery products.');
       return;
     }
     if (wholesalePrice < 0) {
@@ -111,9 +117,9 @@ export const PriceEditModal: React.FC<PriceEditModalProps> = ({
     setIsSubmitting(true);
     try {
       await onSave(product.id, {
-        retailPrice,
-        publisherDiscountPercent,
-        wholesalePrice,
+        retailPrice: isBook ? retailPrice : (retailPrice || 0),
+        publisherDiscountPercent: isBook ? publisherDiscountPercent : 0,
+        wholesalePrice: isBook ? wholesalePrice : (wholesalePrice || retailPrice || 0),
         costPrice,
       });
       onClose();
@@ -180,121 +186,182 @@ export const PriceEditModal: React.FC<PriceEditModalProps> = ({
         )}
 
         {/* Price Inputs Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          {/* Retail Price / MRP */}
-          <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1">
-              Retail Price / MRP (Rs.) <span className="text-rose-500">*</span>
-            </label>
-            <div className="relative">
-              <input
-                type="number"
-                min="0"
-                step="any"
-                value={retailPrice}
-                onChange={(e) => handleRetailPriceChange(parseFloat(e.target.value) || 0)}
-                className="w-full px-3 py-2 text-base font-mono font-bold text-slate-900 border border-slate-300 rounded-xl focus:ring-2 focus:ring-[#071F49] focus:outline-none"
-                required
-              />
-              <span className="absolute right-3 top-2.5 text-xs font-bold text-slate-400 font-mono">
-                PKR
-              </span>
-            </div>
-            <span className="text-[11px] text-slate-500 mt-1 block">
-              Previous: {formatCurrency(oldMrp)}
-              {priceDiff !== 0 && (
-                <span className={`ml-1 font-bold ${priceDiff > 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                  ({priceDiff > 0 ? `+${formatCurrency(priceDiff)}` : formatCurrency(priceDiff)})
-                </span>
-              )}
-            </span>
-          </div>
-
-          {/* Publisher Discount % */}
-          <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1">
-              Publisher Discount (%)
-            </label>
-            <div className="relative">
-              <input
-                type="number"
-                min="0"
-                max="100"
-                step="any"
-                value={publisherDiscountPercent}
-                onChange={(e) => handlePubDiscountChange(parseFloat(e.target.value) || 0)}
-                className="w-full px-3 py-2 text-base font-mono font-bold text-slate-900 border border-slate-300 rounded-xl focus:ring-2 focus:ring-[#071F49] focus:outline-none"
-              />
-              <span className="absolute right-3 top-2.5 text-xs font-bold text-slate-400 font-mono">
-                %
-              </span>
-            </div>
-            <span className="text-[11px] text-slate-500 mt-1 block">
-              Previous: {product.publisherDiscountPercent ?? 0}%
-            </span>
-          </div>
-
-          {/* Actual Purchase Cost */}
-          <div>
-            <div className="flex items-center justify-between mb-1">
-              <label className="text-xs font-bold text-slate-700">
-                Purchase Cost Price (Rs.)
+        {isBook ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {/* Retail Price / MRP */}
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">
+                Retail Price / MRP (Rs.) <span className="text-rose-500">*</span>
               </label>
-              <button
-                type="button"
-                onClick={() => setIsManualCost(!isManualCost)}
-                className="text-[11px] text-[#071F49] hover:underline font-semibold"
-              >
-                {isManualCost ? 'Auto calculate from Disc %' : 'Override manually'}
-              </button>
-            </div>
-            <div className="relative">
-              <input
-                type="number"
-                min="0"
-                step="any"
-                disabled={!isManualCost}
-                value={costPrice}
-                onChange={(e) => setCostPrice(parseFloat(e.target.value) || 0)}
-                className={`w-full px-3 py-2 text-base font-mono font-bold border rounded-xl focus:ring-2 focus:ring-[#071F49] focus:outline-none ${
-                  isManualCost
-                    ? 'text-slate-900 border-slate-300 bg-white'
-                    : 'text-slate-600 border-slate-200 bg-slate-50'
-                }`}
-                required
-              />
-              <span className="absolute right-3 top-2.5 text-xs font-bold text-slate-400 font-mono">
-                PKR
+              <div className="relative">
+                <input
+                  type="number"
+                  min="0"
+                  step="any"
+                  value={retailPrice}
+                  onChange={(e) => handleRetailPriceChange(parseFloat(e.target.value) || 0)}
+                  className="w-full px-3 py-2 text-base font-mono font-bold text-slate-900 border border-slate-300 rounded-xl focus:ring-2 focus:ring-[#071F49] focus:outline-none"
+                  required
+                />
+                <span className="absolute right-3 top-2.5 text-xs font-bold text-slate-400 font-mono">
+                  PKR
+                </span>
+              </div>
+              <span className="text-[11px] text-slate-500 mt-1 block">
+                Previous: {formatCurrency(oldMrp)}
+                {priceDiff !== 0 && (
+                  <span className={`ml-1 font-bold ${priceDiff > 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                    ({priceDiff > 0 ? `+${formatCurrency(priceDiff)}` : formatCurrency(priceDiff)})
+                  </span>
+                )}
               </span>
             </div>
-            <span className="text-[11px] text-slate-500 mt-1 block">
-              Previous: {formatCurrency(oldCost)}
-            </span>
-          </div>
 
-          {/* Wholesale Price */}
-          <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1">
-              Wholesale / Trade Price (Rs.)
-            </label>
-            <div className="relative">
-              <input
-                type="number"
-                min="0"
-                step="any"
-                value={wholesalePrice}
-                onChange={(e) => setWholesalePrice(parseFloat(e.target.value) || 0)}
-                className="w-full px-3 py-2 text-base font-mono font-bold text-slate-900 border border-slate-300 rounded-xl focus:ring-2 focus:ring-[#071F49] focus:outline-none"
-              />
-              <span className="absolute right-3 top-2.5 text-xs font-bold text-slate-400 font-mono">
-                PKR
+            {/* Publisher Discount % */}
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">
+                Publisher Discount (%)
+              </label>
+              <div className="relative">
+                <input
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="any"
+                  value={publisherDiscountPercent}
+                  onChange={(e) => handlePubDiscountChange(parseFloat(e.target.value) || 0)}
+                  className="w-full px-3 py-2 text-base font-mono font-bold text-slate-900 border border-slate-300 rounded-xl focus:ring-2 focus:ring-[#071F49] focus:outline-none"
+                />
+                <span className="absolute right-3 top-2.5 text-xs font-bold text-slate-400 font-mono">
+                  %
+                </span>
+              </div>
+              <span className="text-[11px] text-slate-500 mt-1 block">
+                Previous: {product.publisherDiscountPercent ?? 0}%
               </span>
             </div>
-            <span className="text-[11px] text-slate-500 mt-1 block">
-              Previous: {formatCurrency(oldWholesale)}
-            </span>
+
+            {/* Actual Purchase Cost */}
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-xs font-bold text-slate-700">
+                  Purchase Cost Price (Rs.)
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setIsManualCost(!isManualCost)}
+                  className="text-[11px] text-[#071F49] hover:underline font-semibold"
+                >
+                  {isManualCost ? 'Auto calculate from Disc %' : 'Override manually'}
+                </button>
+              </div>
+              <div className="relative">
+                <input
+                  type="number"
+                  min="0"
+                  step="any"
+                  disabled={!isManualCost}
+                  value={costPrice}
+                  onChange={(e) => setCostPrice(parseFloat(e.target.value) || 0)}
+                  className={`w-full px-3 py-2 text-base font-mono font-bold border rounded-xl focus:ring-2 focus:ring-[#071F49] focus:outline-none ${
+                    isManualCost
+                      ? 'text-slate-900 border-slate-300 bg-white'
+                      : 'text-slate-600 border-slate-200 bg-slate-50'
+                  }`}
+                  required
+                />
+                <span className="absolute right-3 top-2.5 text-xs font-bold text-slate-400 font-mono">
+                  PKR
+                </span>
+              </div>
+              <span className="text-[11px] text-slate-500 mt-1 block">
+                Previous: {formatCurrency(oldCost)}
+              </span>
+            </div>
+
+            {/* Wholesale Price */}
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">
+                Wholesale / Trade Price (Rs.)
+              </label>
+              <div className="relative">
+                <input
+                  type="number"
+                  min="0"
+                  step="any"
+                  value={wholesalePrice}
+                  onChange={(e) => setWholesalePrice(parseFloat(e.target.value) || 0)}
+                  className="w-full px-3 py-2 text-base font-mono font-bold text-slate-900 border border-slate-300 rounded-xl focus:ring-2 focus:ring-[#071F49] focus:outline-none"
+                />
+                <span className="absolute right-3 top-2.5 text-xs font-bold text-slate-400 font-mono">
+                  PKR
+                </span>
+              </div>
+              <span className="text-[11px] text-slate-500 mt-1 block">
+                Previous: {formatCurrency(oldWholesale)}
+              </span>
+            </div>
           </div>
-        </div>
+        ) : (
+          <div className="space-y-4">
+            <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900">
+              <span className="font-bold">Stationery / Non-Book Product:</span>
+              <p className="mt-0.5 text-amber-800">
+                Purchase cost is required for accurate FIFO stock valuation. There is no fixed mandatory selling price; the cashier enters the customer selling rate at the POS counter.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {/* Purchase Cost Price (Required) */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Purchase Cost Price (Rs.) <span className="text-rose-500">*</span>
+                </label>
+                <div className="relative">
+                  <input
+                    type="number"
+                    min="0"
+                    step="any"
+                    value={costPrice}
+                    onChange={(e) => setCostPrice(parseFloat(e.target.value) || 0)}
+                    className="w-full px-3 py-2 text-base font-mono font-bold text-slate-900 border border-slate-300 rounded-xl focus:ring-2 focus:ring-[#071F49] focus:outline-none bg-white"
+                    required
+                  />
+                  <span className="absolute right-3 top-2.5 text-xs font-bold text-slate-400 font-mono">
+                    PKR
+                  </span>
+                </div>
+                <span className="text-[11px] text-slate-500 mt-1 block">
+                  Previous: {formatCurrency(oldCost)}
+                </span>
+              </div>
+
+              {/* Reference / Optional Last Rate */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Reference / Last POS Rate (Rs.) <span className="text-slate-400 font-normal">(Optional)</span>
+                </label>
+                <div className="relative">
+                  <input
+                    type="number"
+                    min="0"
+                    step="any"
+                    value={retailPrice || ''}
+                    placeholder="Open / Set at POS"
+                    onChange={(e) => setRetailPrice(parseFloat(e.target.value) || 0)}
+                    className="w-full px-3 py-2 text-base font-mono font-bold text-slate-900 border border-slate-300 rounded-xl focus:ring-2 focus:ring-[#071F49] focus:outline-none"
+                  />
+                  <span className="absolute right-3 top-2.5 text-xs font-bold text-slate-400 font-mono">
+                    PKR
+                  </span>
+                </div>
+                <span className="text-[11px] text-slate-500 mt-1 block">
+                  {product.lastSoldPrice ? `Last sold at: ${formatCurrency(product.lastSoldPrice)}` : 'No fixed rate required'}
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Financial Margins & Inventory Impact Breakdown */}
         <div className="p-3.5 bg-blue-50/70 border border-blue-100 rounded-xl grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">

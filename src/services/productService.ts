@@ -230,12 +230,13 @@ export interface CreateProductInput {
   notebookSheets?: string;
   notebookGrammage?: string;
   costPrice: number;
-  retailPrice: number;
+  retailPrice?: number;
   originalPrice?: number;
   mrp?: number;
   publisherDiscountPercent?: number;
   wholesalePrice?: number;
   marketShopPrice?: number;
+  lastSoldPrice?: number;
   currentStock: number;
   lowStockThreshold: number;
   unit: string;
@@ -298,15 +299,17 @@ export const createProduct = async (
 
   const isLowStock = input.currentStock <= input.lowStockThreshold;
 
+  const isBook = input.classification === 'book';
   const mrp = Number(input.retailPrice || input.originalPrice || input.mrp) || 0;
-  const pubDiscount = typeof input.publisherDiscountPercent === 'number'
+  const pubDiscount = isBook && typeof input.publisherDiscountPercent === 'number'
     ? Math.max(0, Math.min(100, input.publisherDiscountPercent))
     : 0;
-  // Actual Purchase Cost = MRP * (1 - Publisher Discount % / 100)
+  // For books: Actual Purchase Cost = MRP * (1 - Publisher Discount % / 100)
+  // For non-books: Cost Price is the direct supplier purchase cost
   const calculatedCost = Math.round((mrp * (1 - pubDiscount / 100)) * 100) / 100;
-  const actualCost = typeof input.costPrice === 'number' && input.costPrice >= 0
-    ? Number(input.costPrice)
-    : calculatedCost;
+  const actualCost = isBook
+    ? (mrp > 0 ? calculatedCost : (Number(input.costPrice) || 0))
+    : (Number(input.costPrice) || 0);
 
   const newProduct: ProductDocument = {
     id: prodRef.id,
@@ -328,12 +331,13 @@ export const createProduct = async (
     notebookSheets: input.notebookSheets?.trim() || undefined,
     notebookGrammage: input.notebookGrammage?.trim() || undefined,
     costPrice: actualCost,
-    retailPrice: mrp,
-    originalPrice: mrp,
-    mrp: mrp,
+    retailPrice: isBook ? mrp : (Number(input.retailPrice) || 0),
+    originalPrice: isBook ? mrp : (Number(input.retailPrice) || 0),
+    mrp: isBook ? mrp : (Number(input.retailPrice) || 0),
     publisherDiscountPercent: pubDiscount,
     wholesalePrice: Number(input.wholesalePrice) || mrp,
     marketShopPrice: input.marketShopPrice !== undefined ? Number(input.marketShopPrice) : (Number(input.wholesalePrice) || mrp),
+    lastSoldPrice: input.lastSoldPrice !== undefined ? Number(input.lastSoldPrice) : undefined,
     currentStock: Number(input.currentStock) || 0,
     lowStockThreshold: Number(input.lowStockThreshold) || 5,
     unit: input.unit || 'piece',
@@ -420,18 +424,24 @@ export const updateProduct = async (
   const newCurrentStock = updates.currentStock !== undefined ? Number(updates.currentStock) : existing.currentStock;
   const newLowThreshold = updates.lowStockThreshold !== undefined ? Number(updates.lowStockThreshold) : existing.lowStockThreshold;
 
+  const isBook = (updates.classification || existing.classification) === 'book';
+
   const mrp = updates.retailPrice !== undefined
     ? Number(updates.retailPrice)
     : (updates.originalPrice !== undefined ? Number(updates.originalPrice) : existing.retailPrice);
 
-  const pubDiscount = updates.publisherDiscountPercent !== undefined
-    ? Math.max(0, Math.min(100, Number(updates.publisherDiscountPercent)))
-    : (existing.publisherDiscountPercent !== undefined
-        ? existing.publisherDiscountPercent
-        : (existing.retailPrice > 0 ? Math.max(0, Math.round(((existing.retailPrice - existing.costPrice) / existing.retailPrice) * 100)) : 0));
+  const pubDiscount = isBook
+    ? (updates.publisherDiscountPercent !== undefined
+        ? Math.max(0, Math.min(100, Number(updates.publisherDiscountPercent)))
+        : (existing.publisherDiscountPercent !== undefined
+            ? existing.publisherDiscountPercent
+            : (existing.retailPrice > 0 ? Math.max(0, Math.round(((existing.retailPrice - existing.costPrice) / existing.retailPrice) * 100)) : 0)))
+    : 0;
 
   const calculatedCost = Math.round((mrp * (1 - pubDiscount / 100)) * 100) / 100;
-  const newCostPrice = updates.costPrice !== undefined ? Number(updates.costPrice) : calculatedCost;
+  const newCostPrice = isBook
+    ? (updates.costPrice !== undefined ? Number(updates.costPrice) : (mrp > 0 ? calculatedCost : existing.costPrice))
+    : (updates.costPrice !== undefined ? Number(updates.costPrice) : existing.costPrice);
   const isLowStock = newCurrentStock <= newLowThreshold;
 
   const stockDiff = newCurrentStock - existing.currentStock;

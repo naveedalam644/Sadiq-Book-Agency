@@ -327,14 +327,25 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
       typeof publisherDiscountPercent === 'number'
         ? Math.max(0, Math.min(100, publisherDiscountPercent))
         : 0;
-    
+
+    // Validation: Books require MRP; Stationery requires Purchase Cost
+    if (isBook && numMrp <= 0) {
+      setFormError('Book MRP / Original Price is required.');
+      return;
+    }
+    if (!isBook && (costPrice === '' || Number(costPrice) <= 0)) {
+      setFormError('Purchase Cost / Cost Price is required for notebook and stationery items.');
+      return;
+    }
+
     // For books: Cost is calculated from MRP * (1 - Pub Disc % / 100)
     // For non-books: Cost is directly entered Purchase Price
     const numActualCost = isBook
       ? Math.round(numMrp * (1 - numPubDisc / 100) * 100) / 100
       : Number(costPrice) || 0;
 
-    const finalRetail = numMrp;
+    // Selling price is optional at creation for non-books (open at POS)
+    const finalRetail = isBook ? numMrp : (retailPrice !== '' && Number(retailPrice) > 0 ? Number(retailPrice) : 0);
     const finalWholesale = wholesalePrice !== '' && Number(wholesalePrice) > 0 ? Number(wholesalePrice) : finalRetail;
     const finalMarketShop = marketShopPrice !== '' && Number(marketShopPrice) > 0 ? Number(marketShopPrice) : finalWholesale;
     const finalPubDisc = isBook ? numPubDisc : 0;
@@ -818,10 +829,10 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
           <div className="p-4 bg-amber-50/60 border border-amber-200 rounded-xl space-y-3">
             <div className="flex items-center justify-between">
               <h4 className="text-xs font-bold uppercase tracking-wider text-[#071F49]">
-                Item Pricing (Purchase Cost & Customer Sale Rates)
+                Stationery Pricing (Purchase Cost & Open POS Selling Rates)
               </h4>
               <span className="text-[11px] text-amber-900 font-medium">
-                No MRP/Discount: Set your purchase cost and custom selling rates
+                No MRP / No Publisher Discount: Set Purchase Cost (Selling rate entered at POS)
               </span>
             </div>
 
@@ -837,18 +848,18 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
                   onChange={(e) =>
                     setCostPrice(e.target.value === '' ? '' : parseFloat(e.target.value))
                   }
-                  helperText="Supplier / dealer purchase rate"
+                  helperText="Required supplier / dealer purchase cost"
                   required
                 />
               </div>
 
               <div>
                 <Input
-                  label="Retail / Parchon Rate (PKR) *"
+                  label="Default Sale Rate (PKR) (Optional)"
                   type="number"
                   min="0"
                   step="any"
-                  placeholder="e.g. 200"
+                  placeholder="Leave empty or set default"
                   value={retailPrice}
                   onChange={(e) => {
                     const val = e.target.value === '' ? '' : parseFloat(e.target.value);
@@ -856,8 +867,7 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
                     if (wholesalePrice === 0 || wholesalePrice === '') setWholesalePrice(val);
                     if (marketShopPrice === 0 || marketShopPrice === '') setMarketShopPrice(val);
                   }}
-                  helperText="Counter cash customer price"
-                  required
+                  helperText="Optional default rate (Open at POS)"
                 />
               </div>
 

@@ -66,8 +66,32 @@ export const resolveEffectivePrice = (
   savingsPerUnit: number;
   basePrice: number;
 } => {
+  const isBook = product.classification === 'book';
   const standardRetail = Number(product.retailPrice) || 0;
   const standardWholesale = Number(product.wholesalePrice) || standardRetail;
+
+  // 0. Non-Book Stationery Exemption:
+  // Stationery items are strictly excluded from book percentage discounts & automatic store discounts.
+  if (!isBook) {
+    const defaultPrice = product.lastSoldPrice || standardRetail || 0;
+    if (customDiscount && customDiscount.discountType === 'fixed_rate') {
+      const fixedRate = Math.max(0, Number(customDiscount.discountValue) || 0);
+      return {
+        effectivePrice: fixedRate,
+        appliedRuleType: 'custom_fixed',
+        discountRatePercent: 0,
+        savingsPerUnit: 0,
+        basePrice: fixedRate,
+      };
+    }
+    return {
+      effectivePrice: defaultPrice,
+      appliedRuleType: 'standard_retail',
+      discountRatePercent: 0,
+      savingsPerUnit: 0,
+      basePrice: defaultPrice,
+    };
+  }
 
   // 1. Customer-Specific Product Discount Rule
   if (customDiscount) {

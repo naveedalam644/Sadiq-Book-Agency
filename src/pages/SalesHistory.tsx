@@ -8,8 +8,7 @@ import {
   CheckCircle2,
   AlertTriangle,
   X,
-  PackageCheck,
-  PackageX,
+  CheckSquare,
   Wallet,
   CreditCard,
   Calendar,
@@ -66,7 +65,6 @@ export const SalesHistory: React.FC = () => {
   const [returnCustomer, setReturnCustomer] = useState<CustomerDocument | null>(null);
   const [priorReturns, setPriorReturns] = useState<SaleReturnDocument[]>([]);
   const [returnQuantities, setReturnQuantities] = useState<Record<string, number>>({});
-  const [returnConditions, setReturnConditions] = useState<Record<string, ReturnItemCondition | ''>>({});
   const [returnReason, setReturnReason] = useState('');
   const [refundMethod, setRefundMethod] = useState<'cash' | 'credit_deduction'>('cash');
   const [isProcessingReturn, setIsProcessingReturn] = useState(false);
@@ -182,13 +180,10 @@ export const SalesHistory: React.FC = () => {
     }
 
     const initialQtys: Record<string, number> = {};
-    const initialConditions: Record<string, ReturnItemCondition | ''> = {};
     for (const item of sale.items) {
       initialQtys[item.productId] = 0;
-      initialConditions[item.productId] = ''; // Explicit condition confirmation required per approved requirement
     }
     setReturnQuantities(initialQtys);
-    setReturnConditions(initialConditions);
     setIsReturnModalOpen(true);
   };
 
@@ -202,6 +197,28 @@ export const SalesHistory: React.FC = () => {
     return sum;
   };
 
+  // 1-Click: Select Full Bill (sets return quantity to all remaining eligible quantity for every item)
+  const handleSelectFullBill = () => {
+    if (!returnSale) return;
+    const allQtys: Record<string, number> = {};
+    for (const item of returnSale.items) {
+      const alreadyRet = getAlreadyReturnedQty(item.productId);
+      const remainingEligible = Math.max(0, item.quantity - alreadyRet);
+      allQtys[item.productId] = remainingEligible;
+    }
+    setReturnQuantities(allQtys);
+  };
+
+  // 1-Click: Deselect / Reset All Quantities to 0
+  const handleClearAllReturnQtys = () => {
+    if (!returnSale) return;
+    const clearedQtys: Record<string, number> = {};
+    for (const item of returnSale.items) {
+      clearedQtys[item.productId] = 0;
+    }
+    setReturnQuantities(clearedQtys);
+  };
+
   const handleReturnSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!returnSale) return;
@@ -213,13 +230,6 @@ export const SalesHistory: React.FC = () => {
       return;
     }
 
-    // Default condition must not silently classify damaged items as saleable. Require operator to confirm condition.
-    const unconfirmedItems = activeItems.filter(([productId]) => !returnConditions[productId]);
-    if (unconfirmedItems.length > 0) {
-      setReturnError('Please explicitly select the condition (Saleable or Damaged) for each returned item.');
-      return;
-    }
-
     if (refundMethod === 'credit_deduction' && !returnSale.customerId) {
       setReturnError('Customer Khata adjustment is only available for registered account customers. Please select Cash Refund.');
       return;
@@ -227,10 +237,11 @@ export const SalesHistory: React.FC = () => {
 
     setIsProcessingReturn(true);
     try {
+      // All returned items are automatically classified as saleable and auto-restocked per requirement
       const returnItems = activeItems.map(([productId, quantity]) => ({
         productId,
         quantity,
-        condition: returnConditions[productId] as ReturnItemCondition,
+        condition: 'saleable' as ReturnItemCondition,
       }));
 
       const returnDoc = await processSaleReturnTransaction(
@@ -244,12 +255,7 @@ export const SalesHistory: React.FC = () => {
         currentUser?.email || 'cashier@sadiqbookagency.com'
       );
 
-      const saleableQty = returnItems
-        .filter((i) => i.condition === 'saleable')
-        .reduce((sum, i) => sum + i.quantity, 0);
-      const damagedQty = returnItems
-        .filter((i) => i.condition === 'damaged')
-        .reduce((sum, i) => sum + i.quantity, 0);
+      const totalRestockedQty = returnItems.reduce((sum, i) => sum + i.quantity, 0);
 
       setLatestProcessedReturn({
         returnDoc,
@@ -258,7 +264,7 @@ export const SalesHistory: React.FC = () => {
       });
 
       setReturnSuccessMessage(
-        `Return ${returnDoc.returnNo} processed successfully! Refund Amount: PKR ${returnDoc.totalRefundAmount.toFixed(2)}. (${saleableQty} saleable units restocked, ${damagedQty} damaged units quarantined).`
+        `Return ${returnDoc.returnNo} processed successfully! Refund Amount: PKR ${returnDoc.totalRefundAmount.toFixed(2)}. (${totalRestockedQty} units automatically restocked into inventory).`
       );
       loadSales(true);
       setTimeout(() => {
@@ -682,14 +688,9 @@ export const SalesHistory: React.FC = () => {
           (sum, it) => sum + (it.effectivePrice * (returnQuantities[it.productId] || 0)),
           0
         );
-        const previewSaleableQty = activeReturnEntries
-          .filter((it) => returnConditions[it.productId] === 'saleable')
-          .reduce((sum, it) => sum + (returnQuantities[it.productId] || 0), 0);
-        const previewDamagedQty = activeReturnEntries
-          .filter((it) => returnConditions[it.productId] === 'damaged')
-          .reduce((sum, it) => sum + (returnQuantities[it.productId] || 0), 0);
-        const hasUnconfirmedCondition = activeReturnEntries.some(
-          (it) => !returnConditions[it.productId]
+        const totalReturnUnits = activeReturnEntries.reduce(
+          (sum, it) => sum + (returnQuantities[it.productId] || 0),
+          0
         );
 
         return (
@@ -745,9 +746,32 @@ export const SalesHistory: React.FC = () => {
                 )}
 
                 <div>
-                  <p className="text-slate-600 mb-2">
-                    Select quantity and condition for each item to return. Only <strong>Saleable</strong> items will be automatically restocked into inventory.
-                  </p>
+                  <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
+                    <p className="text-slate-600 text-xs">
+                      Enter quantity to return. Returned items will be <strong>automatically restocked</strong> into inventory.
+                    </p>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <button
+                        type="button"
+                        onClick={handleSelectFullBill}
+                        className="px-2.5 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-bold flex items-center gap-1 transition shadow-xs cursor-pointer"
+                        title="Select entire bill quantity for all items"
+                      >
+                        <CheckSquare className="w-3.5 h-3.5" />
+                        <span>Select Full Bill</span>
+                      </button>
+                      {activeReturnEntries.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={handleClearAllReturnQtys}
+                          className="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold transition cursor-pointer"
+                          title="Reset all return quantities to 0"
+                        >
+                          Clear All
+                        </button>
+                      )}
+                    </div>
+                  </div>
 
                   <div className="border border-slate-200 rounded-xl overflow-hidden divide-y divide-slate-100 max-h-60 overflow-y-auto">
                     {returnSale.items.map((it) => {
@@ -756,24 +780,23 @@ export const SalesHistory: React.FC = () => {
                       const isFullyReturned = remainingEligible <= 0;
                       const qty = returnQuantities[it.productId] || 0;
                       const isSelected = qty > 0;
-                      const condition = returnConditions[it.productId] || '';
 
                       return (
                         <div
                           key={it.productId}
-                          className={`p-3 space-y-2 transition-colors ${
-                            isSelected ? 'bg-amber-50/40' : 'bg-slate-50/50'
+                          className={`p-3 space-y-1.5 transition-colors ${
+                            isSelected ? 'bg-amber-50/50' : 'bg-slate-50/50'
                           }`}
                         >
-                          <div className="flex items-center justify-between">
-                            <div className="space-y-0.5 max-w-[65%]">
-                              <div className="font-bold text-slate-900">{it.productName}</div>
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="space-y-0.5 min-w-0 flex-1">
+                              <div className="font-bold text-slate-900 truncate">{it.productName}</div>
                               <div className="text-[11px] text-slate-500">
                                 Sold: {it.quantity} • Prior Returns: {alreadyRet} • <span className="font-semibold text-slate-700">Eligible: {remainingEligible}</span> • Rate: PKR {it.effectivePrice.toFixed(2)}
                               </div>
                             </div>
 
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-1.5 shrink-0">
                               <span className="text-[11px] text-slate-500 font-medium">Return Qty:</span>
                               <input
                                 type="number"
@@ -790,54 +813,26 @@ export const SalesHistory: React.FC = () => {
                                 }}
                                 className="w-16 text-center font-bold text-xs border border-slate-300 rounded-lg py-1 focus:ring-1 focus:ring-amber-500 focus:outline-none bg-white"
                               />
+                              <button
+                                type="button"
+                                disabled={isFullyReturned || isProcessingReturn}
+                                onClick={() => {
+                                  setReturnQuantities((prev) => ({
+                                    ...prev,
+                                    [it.productId]: qty === remainingEligible ? 0 : remainingEligible,
+                                  }));
+                                }}
+                                className={`px-2 py-1 text-[10px] font-bold rounded-md border transition cursor-pointer ${
+                                  qty === remainingEligible
+                                    ? 'bg-amber-600 text-white border-amber-600'
+                                    : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'
+                                }`}
+                                title="Set to max eligible quantity"
+                              >
+                                {qty === remainingEligible ? 'Max ✓' : 'Max'}
+                              </button>
                             </div>
                           </div>
-
-                          {/* Condition selector - required when qty > 0 */}
-                          {isSelected && (
-                            <div className="pt-2 border-t border-amber-100/80 flex flex-wrap items-center justify-between gap-2">
-                              <div className="flex items-center gap-1.5">
-                                <span className="text-[11px] font-bold text-slate-700">Item Condition:</span>
-                                {!condition && (
-                                  <span className="text-[10px] font-bold text-red-600 bg-red-100 px-1.5 py-0.5 rounded">
-                                    Required *
-                                  </span>
-                                )}
-                              </div>
-
-                              <div className="flex gap-2">
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    setReturnConditions((prev) => ({ ...prev, [it.productId]: 'saleable' }))
-                                  }
-                                  className={`px-2.5 py-1 text-[11px] font-bold rounded-lg border flex items-center gap-1 transition-all cursor-pointer ${
-                                    condition === 'saleable'
-                                      ? 'bg-emerald-600 text-white border-emerald-700 shadow-xs'
-                                      : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
-                                  }`}
-                                >
-                                  <PackageCheck className="w-3.5 h-3.5" />
-                                  <span>Saleable (Auto-Restock)</span>
-                                </button>
-
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    setReturnConditions((prev) => ({ ...prev, [it.productId]: 'damaged' }))
-                                  }
-                                  className={`px-2.5 py-1 text-[11px] font-bold rounded-lg border flex items-center gap-1 transition-all cursor-pointer ${
-                                    condition === 'damaged'
-                                      ? 'bg-rose-600 text-white border-rose-700 shadow-xs'
-                                      : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
-                                  }`}
-                                >
-                                  <PackageX className="w-3.5 h-3.5" />
-                                  <span>Damaged / Unsaleable (Do Not Restock)</span>
-                                </button>
-                              </div>
-                            </div>
-                          )}
                         </div>
                       );
                     })}
@@ -854,10 +849,9 @@ export const SalesHistory: React.FC = () => {
                       </span>
                     </div>
                     <div className="flex items-center justify-between text-[11px] text-slate-600 border-t border-amber-200/60 pt-1.5">
-                      <span>Restocking Plan:</span>
-                      <span>
-                        <strong className="text-emerald-700">{previewSaleableQty} units</strong> restocked to shelf •{' '}
-                        <strong className="text-rose-700">{previewDamagedQty} units</strong> quarantined/damaged
+                      <span>Restock Summary:</span>
+                      <span className="font-semibold text-emerald-800">
+                        {totalReturnUnits} unit{totalReturnUnits > 1 ? 's' : ''} will be automatically restocked into inventory shelf
                       </span>
                     </div>
                   </div>
@@ -960,8 +954,7 @@ export const SalesHistory: React.FC = () => {
                     type="submit"
                     disabled={
                       isProcessingReturn ||
-                      activeReturnEntries.length === 0 ||
-                      hasUnconfirmedCondition
+                      activeReturnEntries.length === 0
                     }
                     className="px-5 py-2.5 bg-amber-600 hover:bg-amber-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-bold rounded-xl shadow-sm transition-all cursor-pointer"
                   >

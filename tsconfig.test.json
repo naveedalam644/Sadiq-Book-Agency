@@ -14,5 +14,10 @@
     "skipLibCheck": true,
     "types": ["node", "vite/client"]
   },
-  "include": ["tests/whatsapp_communication_verification.ts", "src"]
+  "include": [
+    "tests/whatsapp_communication_verification.ts",
+    "tests/a4_invoice_multipage_and_print_pagination_verification.ts",
+    "tests/book_stationery_pricing_separation_verification.ts",
+    "src"
+  ]
 }

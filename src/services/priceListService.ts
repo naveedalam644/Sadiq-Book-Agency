@@ -214,21 +214,37 @@ export const updateProductPrice = async (
 
   const existing = snap.data() as ProductDocument;
   const now = new Date().toISOString();
+  const isBook = existing.classification === 'book';
 
-  const mrp = Math.max(0, Number(input.retailPrice) || 0);
-  const pubDiscount = input.publisherDiscountPercent !== undefined
-    ? Math.max(0, Math.min(100, Number(input.publisherDiscountPercent)))
-    : (existing.publisherDiscountPercent !== undefined ? existing.publisherDiscountPercent : 0);
+  let mrp = Math.max(0, Number(input.retailPrice) || 0);
+  let pubDiscount = 0;
+  let costPrice = 0;
+  let wholesalePrice = mrp;
 
-  // Cost calculation: MRP * (1 - pubDisc / 100)
-  const calculatedCost = Math.round((mrp * (1 - pubDiscount / 100)) * 100) / 100;
-  const costPrice = input.costPrice !== undefined && input.costPrice >= 0
-    ? Number(input.costPrice)
-    : calculatedCost;
+  if (isBook) {
+    pubDiscount = input.publisherDiscountPercent !== undefined
+      ? Math.max(0, Math.min(100, Number(input.publisherDiscountPercent)))
+      : (existing.publisherDiscountPercent !== undefined ? existing.publisherDiscountPercent : 0);
 
-  const wholesalePrice = input.wholesalePrice !== undefined && input.wholesalePrice >= 0
-    ? Number(input.wholesalePrice)
-    : mrp;
+    // Cost calculation: MRP * (1 - pubDisc / 100)
+    const calculatedCost = Math.round((mrp * (1 - pubDiscount / 100)) * 100) / 100;
+    costPrice = input.costPrice !== undefined && input.costPrice >= 0
+      ? Number(input.costPrice)
+      : calculatedCost;
+
+    wholesalePrice = input.wholesalePrice !== undefined && input.wholesalePrice >= 0
+      ? Number(input.wholesalePrice)
+      : mrp;
+  } else {
+    // Model 2: Notebook, Register, Other Stationery
+    // Purchase cost is directly provided. MRP and Publisher Discount are not applicable.
+    costPrice = input.costPrice !== undefined && input.costPrice >= 0
+      ? Number(input.costPrice)
+      : (Number(existing.costPrice) || 0);
+    pubDiscount = 0;
+    mrp = input.retailPrice !== undefined ? Number(input.retailPrice) : (Number(existing.retailPrice) || 0);
+    wholesalePrice = input.wholesalePrice !== undefined ? Number(input.wholesalePrice) : (Number(existing.wholesalePrice) || mrp);
+  }
 
   // Stock valuation difference on current stock on hand
   const currentStock = Number(existing.currentStock) || 0;

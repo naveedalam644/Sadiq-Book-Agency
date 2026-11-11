@@ -4,6 +4,7 @@ import type {
   CustomerDocument,
   CustomerDiscountDocument,
   CustomerType,
+  ItemClassification,
 } from '../types/database';
 import { resolveEffectivePrice } from '../services/discountService';
 import {
@@ -26,18 +27,27 @@ export const getPOSCartStorageKey = (terminalId = 'T1'): string => {
   return `sba_active_pos_cart_${cleanTerm}`;
 };
 
+export const getParkedCartsStorageKey = (terminalId = 'T1'): string => {
+  const cleanTerm = terminalId.replace(/[^A-Za-z0-9]/g, '').slice(0, 3).toUpperCase() || 'T1';
+  return `sba_parked_pos_carts_${cleanTerm}`;
+};
+
 export interface POSCartItem {
   productId: string;
   productName: string;
   sku: string;
+  classification: ItemClassification;
+  isDiscountEligible: boolean;
   publisherName: string; // Captured from product.publisherName or 'Unknown' (no author fallback)
+  seriesName?: string; // Captured from product.seriesName
+  targetClass?: string; // Academic Class (e.g. "Class 9", "Play Group")
   availableStock: number;
   costPrice: number;
   quantity: number;
   unitPrice: number; // Original Price / MRP
   discountRate: number; // Customer discount %
   discountAmount: number; // Customer discount monetary amount per unit
-  effectivePrice: number; // unitPrice - discountAmount
+  effectivePrice: number; // unitPrice - discountAmount (or direct entered stationery price)
   lineTotal: number; // effectivePrice * quantity
   isManualDiscount?: boolean; // Set true when user manually enters discount for this item on the bill
   appliedRuleType:
@@ -47,6 +57,19 @@ export interface POSCartItem {
     | 'custom_percentage'
     | 'custom_fixed'
     | 'manual_override';
+}
+
+export interface ParkedCart {
+  id: string;
+  label: string;
+  parkedAt: string;
+  session: CheckoutSession;
+  customerType: CustomerType;
+  customer: CustomerDocument | null;
+  items: POSCartItem[];
+  notes?: string;
+  totalAmount: number;
+  itemCount: number;
 }
 
 export interface PersistentCartState {
@@ -113,6 +136,31 @@ export const usePOSCart = (options: UsePOSCartOptions = {}) => {
   const [items, setItems] = useState<POSCartItem[]>([]);
   const [notes, setNotesState] = useState<string>('');
   const [cartError, setCartError] = useState<string | null>(null);
+
+  // Parked / Held Carts State (Multi-Bill counter tabs)
+  const parkedStorageKey = useMemo(() => getParkedCartsStorageKey(cleanTerm), [cleanTerm]);
+  const [parkedCarts, setParkedCarts] = useState<ParkedCart[]>(() => {
+    if (!store) return [];
+    try {
+      const saved = store.getItem(getParkedCartsStorageKey(cleanTerm));
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch {
+      // Ignore
+    }
+    return [];
+  });
+
+  const saveParkedCartsToStorage = useCallback((carts: ParkedCart[]) => {
+    if (!store) return;
+    try {
+      store.setItem(parkedStorageKey, JSON.stringify(carts));
+    } catch (err) {
+      console.warn('Failed to save parked carts to storage:', err);
+    }
+  }, [store, parkedStorageKey]);
 
   // In-memory cache of customer-specific discounts for the active customer
   const [customDiscountsMap, setCustomDiscountsMap] = useState<Map<string, CustomerDiscountDocument>>(new Map());
@@ -394,6 +442,17 @@ export const usePOSCart = (options: UsePOSCartOptions = {}) => {
     discountsMap: Map<string, CustomerDiscountDocument>
   ): POSCartItem[] => {
     return existingItems.map((item) => {
+      // If item is not a book (stationery/notebook/register), preserve its direct selling rate intact
+      if (item.classification && item.classification !== 'book') {
+        const lineTotal = roundMoney(item.effectivePrice * item.quantity);
+        return {
+          ...item,
+          lineTotal,
+          discountRate: 0,
+          discountAmount: 0,
+        };
+      }
+
       // If user manually entered/adjusted the customer discount on this bill, preserve it!
       // "never silently override the manually selected bill discount."
       if (item.isManualDiscount) {
@@ -441,17 +500,36 @@ export const usePOSCart = (options: UsePOSCartOptions = {}) => {
   // ---------------------------------------------------------------------------------
   // 6. TOTALS COMPUTATION (ROUNDED MONETARY ARITHMETIC)
   // ---------------------------------------------------------------------------------
-  const { subtotal, totalDiscount, grandTotal, totalItemCount } = useMemo(() => {
+  const {
+    subtotal,
+    totalDiscount,
+    grandTotal,
+    totalItemCount,
+    booksSubtotal,
+    stationerySubtotal,
+    booksEligibleDiscountBase,
+  } = useMemo(() => {
     let sub = 0;
     let disc = 0;
     let count = 0;
+    let bSub = 0;
+    let sSub = 0;
+    let bBase = 0;
 
     for (const item of items) {
+      const isBook = item.classification === 'book';
       const rawLineSubtotal = roundMoney(item.unitPrice * item.quantity);
-      const rawLineDiscount = roundMoney(item.discountAmount * item.quantity);
+      const rawLineDiscount = isBook ? roundMoney(item.discountAmount * item.quantity) : 0;
       sub = roundMoney(sub + rawLineSubtotal);
       disc = roundMoney(disc + rawLineDiscount);
       count += item.quantity;
+
+      if (isBook) {
+        bSub = roundMoney(bSub + item.lineTotal);
+        bBase = roundMoney(bBase + rawLineSubtotal);
+      } else {
+        sSub = roundMoney(sSub + item.lineTotal);
+      }
     }
 
     const grand = Math.max(0, roundMoney(sub - disc));
@@ -461,6 +539,9 @@ export const usePOSCart = (options: UsePOSCartOptions = {}) => {
       totalDiscount: disc,
       grandTotal: grand,
       totalItemCount: count,
+      booksSubtotal: bSub,
+      stationerySubtotal: sSub,
+      booksEligibleDiscountBase: bBase,
     };
   }, [items]);
 
@@ -535,6 +616,7 @@ export const usePOSCart = (options: UsePOSCartOptions = {}) => {
           ? product.publisherName.trim()
           : 'Unknown';
 
+      const isBook = product.classification === 'book';
       const pricing = resolveItemPricing(product, customer, customerType, customDiscountsMap);
       const lineTotal = roundMoney(pricing.effectivePrice * addQty);
 
@@ -542,13 +624,17 @@ export const usePOSCart = (options: UsePOSCartOptions = {}) => {
         productId: product.id,
         productName: product.title,
         sku: product.sku,
+        classification: product.classification || 'book',
+        isDiscountEligible: isBook,
         publisherName: publisherSnapshot,
+        seriesName: product.seriesName ? product.seriesName.trim() : undefined,
+        targetClass: (product.targetClass || product.className) ? (product.targetClass || product.className)?.trim() : undefined,
         availableStock: available,
         costPrice: Number(product.costPrice) || 0,
         quantity: addQty,
         unitPrice: pricing.unitPrice,
-        discountRate: pricing.discountRate,
-        discountAmount: pricing.discountAmount,
+        discountRate: isBook ? pricing.discountRate : 0,
+        discountAmount: isBook ? pricing.discountAmount : 0,
         effectivePrice: pricing.effectivePrice,
         lineTotal,
         appliedRuleType: pricing.appliedRuleType,
@@ -621,6 +707,7 @@ export const usePOSCart = (options: UsePOSCartOptions = {}) => {
             ? product.publisherName.trim()
             : 'Unknown';
 
+        const isBook = product.classification === 'book';
         const pricing = resolveItemPricing(product, customer, customerType, customDiscountsMap);
         const lineTotal = roundMoney(pricing.effectivePrice * addQty);
 
@@ -628,13 +715,17 @@ export const usePOSCart = (options: UsePOSCartOptions = {}) => {
           productId: product.id,
           productName: product.title,
           sku: product.sku,
+          classification: product.classification || 'book',
+          isDiscountEligible: isBook,
           publisherName: publisherSnapshot,
+          seriesName: product.seriesName ? product.seriesName.trim() : undefined,
+          targetClass: (product.targetClass || product.className) ? (product.targetClass || product.className)?.trim() : undefined,
           availableStock: available,
           costPrice: Number(product.costPrice) || 0,
           quantity: addQty,
           unitPrice: pricing.unitPrice,
-          discountRate: pricing.discountRate,
-          discountAmount: pricing.discountAmount,
+          discountRate: isBook ? pricing.discountRate : 0,
+          discountAmount: isBook ? pricing.discountAmount : 0,
           effectivePrice: pricing.effectivePrice,
           lineTotal,
           appliedRuleType: pricing.appliedRuleType,
@@ -724,6 +815,12 @@ export const usePOSCart = (options: UsePOSCartOptions = {}) => {
     }
 
     const item = items[index];
+    if (item.classification !== 'book') {
+      const err = 'Discounts can only be applied to Book products. Stationery items use direct selling rates.';
+      setCartError(err);
+      return { success: false, error: err };
+    }
+
     const rate = Math.max(0, Math.min(100, Number(discountRate) || 0));
     const discountAmount = roundMoney(item.unitPrice * (rate / 100));
     const effectivePrice = Math.max(0, roundMoney(item.unitPrice - discountAmount));
@@ -770,20 +867,38 @@ export const usePOSCart = (options: UsePOSCartOptions = {}) => {
     const item = items[index];
     const sanitizedPrice = Math.max(0, roundMoney(Number(newPrice) || 0));
     const lineTotal = roundMoney(sanitizedPrice * item.quantity);
+    const isBook = item.classification === 'book';
 
-    const base = item.unitPrice > 0 ? item.unitPrice : sanitizedPrice;
-    const discountAmount = Math.max(0, roundMoney(base - sanitizedPrice));
-    const discountRate = base > 0 ? Math.round((discountAmount / base) * 1000) / 10 : 0;
+    let updatedItem: POSCartItem;
 
-    const updatedItem: POSCartItem = {
-      ...item,
-      effectivePrice: sanitizedPrice,
-      discountAmount,
-      discountRate,
-      lineTotal,
-      isManualDiscount: true,
-      appliedRuleType: 'manual_override',
-    };
+    if (!isBook) {
+      // For stationery / non-books: Direct selling price. Strictly 0 discount.
+      updatedItem = {
+        ...item,
+        unitPrice: sanitizedPrice,
+        effectivePrice: sanitizedPrice,
+        discountAmount: 0,
+        discountRate: 0,
+        lineTotal,
+        isManualDiscount: false,
+        appliedRuleType: 'manual_override',
+      };
+    } else {
+      // For books: Calculate discount rate against original MRP
+      const base = item.unitPrice > 0 ? item.unitPrice : sanitizedPrice;
+      const discountAmount = Math.max(0, roundMoney(base - sanitizedPrice));
+      const discountRate = base > 0 ? Math.round((discountAmount / base) * 1000) / 10 : 0;
+
+      updatedItem = {
+        ...item,
+        effectivePrice: sanitizedPrice,
+        discountAmount,
+        discountRate,
+        lineTotal,
+        isManualDiscount: true,
+        appliedRuleType: 'manual_override',
+      };
+    }
 
     const updatedItems = [...items];
     updatedItems[index] = updatedItem;
@@ -813,6 +928,11 @@ export const usePOSCart = (options: UsePOSCartOptions = {}) => {
     const rate = Math.max(0, Math.min(100, Number(discountRate) || 0));
 
     const updatedItems = items.map((item) => {
+      // Books ONLY! Stationery items are 100% excluded from percentage discounts.
+      if (item.classification !== 'book') {
+        return item;
+      }
+
       const discountAmount = roundMoney(item.unitPrice * (rate / 100));
       const effectivePrice = Math.max(0, roundMoney(item.unitPrice - discountAmount));
       const lineTotal = roundMoney(effectivePrice * item.quantity);
@@ -843,14 +963,199 @@ export const usePOSCart = (options: UsePOSCartOptions = {}) => {
 
     if (items.length === 0) return { success: true };
 
-    const rawSubtotal = items.reduce((sum, item) => roundMoney(sum + item.unitPrice * item.quantity), 0);
-    if (rawSubtotal <= 0) return { success: true };
+    const bookItems = items.filter((i) => i.classification === 'book');
+    if (bookItems.length === 0) {
+      const err = 'No eligible Book items in cart. Stationery cannot be discounted.';
+      setCartError(err);
+      return { success: false, error: err };
+    }
 
-    const cleanAmt = Math.max(0, Math.min(rawSubtotal, Number(discountAmountTotal) || 0));
-    const effectiveRate = Math.round((cleanAmt / rawSubtotal) * 10000) / 100;
+    const booksSubtotal = bookItems.reduce((sum, item) => roundMoney(sum + item.unitPrice * item.quantity), 0);
+    if (booksSubtotal <= 0) return { success: true };
+
+    const requestedAmt = Math.max(0, Number(discountAmountTotal) || 0);
+    if (requestedAmt > booksSubtotal) {
+      const err = `Flat discount (PKR ${requestedAmt}) exceeds eligible Book subtotal (PKR ${booksSubtotal}). Cannot discount stationery lines.`;
+      setCartError(err);
+      return { success: false, error: err };
+    }
+
+    const effectiveRate = Math.round((requestedAmt / booksSubtotal) * 10000) / 100;
 
     return applyGlobalDiscount(effectiveRate);
   }, [items, applyGlobalDiscount, lockStatus]);
+
+  const applySeriesDiscount = useCallback((params: {
+    publisherName?: string;
+    seriesName?: string;
+    targetClass?: string;
+    discountRate: number;
+  }): { success: boolean; count: number; error?: string } => {
+    setCartError(null);
+
+    if (lockStatus !== 'owner') {
+      const err = 'Register is in read-only mode.';
+      setCartError(err);
+      return { success: false, count: 0, error: err };
+    }
+
+    if (items.length === 0) {
+      return { success: true, count: 0 };
+    }
+
+    const rate = Math.max(0, Math.min(100, Number(params.discountRate) || 0));
+    const pubFilter = params.publisherName && params.publisherName !== 'all' ? params.publisherName.trim().toLowerCase() : null;
+    const serFilter = params.seriesName && params.seriesName !== 'all' ? params.seriesName.trim().toLowerCase() : null;
+    const clsFilter = params.targetClass && params.targetClass !== 'all' ? params.targetClass.trim().toLowerCase() : null;
+
+    let matchedCount = 0;
+
+    const updatedItems = items.map((item) => {
+      // Stationery is strictly excluded from percentage discounts
+      if (item.classification !== 'book') {
+        return item;
+      }
+
+      if (pubFilter && (item.publisherName || '').trim().toLowerCase() !== pubFilter) {
+        return item;
+      }
+
+      if (serFilter && (item.seriesName || '').trim().toLowerCase() !== serFilter) {
+        return item;
+      }
+
+      if (clsFilter && (item.targetClass || '').trim().toLowerCase() !== clsFilter) {
+        return item;
+      }
+
+      matchedCount++;
+      const discountAmount = roundMoney(item.unitPrice * (rate / 100));
+      const effectivePrice = Math.max(0, roundMoney(item.unitPrice - discountAmount));
+      const lineTotal = roundMoney(effectivePrice * item.quantity);
+
+      return {
+        ...item,
+        discountRate: rate,
+        discountAmount,
+        effectivePrice,
+        lineTotal,
+        isManualDiscount: rate > 0,
+        appliedRuleType: 'manual_override' as const,
+      };
+    });
+
+    if (matchedCount === 0) {
+      const err = 'No matching books found in cart for selected criteria.';
+      return { success: false, count: 0, error: err };
+    }
+
+    setItems(updatedItems);
+    saveCartToStorage(session, customerType, customer, updatedItems, notes);
+    return { success: true, count: matchedCount };
+  }, [lockStatus, items, session, customerType, customer, notes, saveCartToStorage]);
+
+  const parkCurrentCart = useCallback((customLabel?: string): { success: boolean; parkedId?: string; error?: string } => {
+    if (lockStatus !== 'owner') {
+      return { success: false, error: 'Register is in read-only mode.' };
+    }
+    if (items.length === 0) {
+      return { success: false, error: 'Cart is empty. Add items before holding bill.' };
+    }
+
+    const parkedId = `PARK_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+    const billNum = parkedCarts.length + 1;
+    const custLabel = customer ? (customer.shopName || customer.name) : 'Counter Cash';
+    const totalPcs = items.reduce((sum, i) => sum + i.quantity, 0);
+    const defaultLabel = customLabel || `Hold #${billNum} (${custLabel} • ${totalPcs} pcs)`;
+
+    const newParked: ParkedCart = {
+      id: parkedId,
+      label: defaultLabel,
+      parkedAt: new Date().toISOString(),
+      session,
+      customerType,
+      customer,
+      items: [...items],
+      notes,
+      totalAmount: roundMoney(items.reduce((s, i) => s + i.lineTotal, 0)),
+      itemCount: totalPcs,
+    };
+
+    const updatedParked = [...parkedCarts, newParked];
+    setParkedCarts(updatedParked);
+    saveParkedCartsToStorage(updatedParked);
+
+    // Initialize fresh empty cart for next customer
+    const newSession = createCheckoutSession(cleanTerm);
+    setSession(newSession);
+    setCustomerTypeState('parchon');
+    setCustomerState(null);
+    setItems([]);
+    setNotesState('');
+    saveCartToStorage(newSession, 'parchon', null, [], '');
+
+    return { success: true, parkedId };
+  }, [lockStatus, items, parkedCarts, customer, session, customerType, notes, saveParkedCartsToStorage, cleanTerm, saveCartToStorage]);
+
+  const restoreParkedCart = useCallback((parkedId: string): { success: boolean; error?: string } => {
+    if (lockStatus !== 'owner') {
+      return { success: false, error: 'Register is in read-only mode.' };
+    }
+
+    const index = parkedCarts.findIndex((p) => p.id === parkedId);
+    if (index < 0) {
+      return { success: false, error: 'Held bill not found.' };
+    }
+
+    const targetParked = parkedCarts[index];
+    const remainingParked = parkedCarts.filter((p) => p.id !== parkedId);
+
+    // If current active cart has items, hold it as a parked bill so work is never lost!
+    if (items.length > 0) {
+      const activeParkedId = `PARK_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+      const billNum = remainingParked.length + 1;
+      const custLabel = customer ? (customer.shopName || customer.name) : 'Counter Cash';
+      const totalPcs = items.reduce((sum, i) => sum + i.quantity, 0);
+      const activeParked: ParkedCart = {
+        id: activeParkedId,
+        label: `Hold #${billNum} (${custLabel} • ${totalPcs} pcs)`,
+        parkedAt: new Date().toISOString(),
+        session,
+        customerType,
+        customer,
+        items: [...items],
+        notes,
+        totalAmount: roundMoney(items.reduce((s, i) => s + i.lineTotal, 0)),
+        itemCount: totalPcs,
+      };
+      remainingParked.unshift(activeParked);
+    }
+
+    setParkedCarts(remainingParked);
+    saveParkedCartsToStorage(remainingParked);
+
+    // Restore target parked cart into active register
+    setSession(targetParked.session);
+    setCustomerTypeState(targetParked.customerType);
+    setCustomerState(targetParked.customer);
+    setItems(targetParked.items);
+    setNotesState(targetParked.notes || '');
+    saveCartToStorage(
+      targetParked.session,
+      targetParked.customerType,
+      targetParked.customer,
+      targetParked.items,
+      targetParked.notes || ''
+    );
+
+    return { success: true };
+  }, [lockStatus, parkedCarts, items, customer, session, customerType, notes, saveParkedCartsToStorage, saveCartToStorage]);
+
+  const discardParkedCart = useCallback((parkedId: string) => {
+    const updated = parkedCarts.filter((p) => p.id !== parkedId);
+    setParkedCarts(updated);
+    saveParkedCartsToStorage(updated);
+  }, [parkedCarts, saveParkedCartsToStorage]);
 
   const removeItem = useCallback((productId: string): CartOperationResult => {
     setCartError(null);
@@ -989,6 +1294,7 @@ export const usePOSCart = (options: UsePOSCartOptions = {}) => {
         quantity: i.quantity,
         clientUnitPrice: i.unitPrice,
         clientDiscountRate: i.discountRate,
+        clientSellingPrice: i.effectivePrice,
       })),
       cashTendered: roundMoney(cashTendered),
       paymentMethod,
@@ -1020,7 +1326,11 @@ export const usePOSCart = (options: UsePOSCartOptions = {}) => {
     totalDiscount,
     grandTotal,
     totalItemCount,
+    booksSubtotal,
+    stationerySubtotal,
+    booksEligibleDiscountBase,
     cartError,
+    parkedCarts,
     lockStatus,
     lockError,
     isReadOnly: lockStatus !== 'owner',
@@ -1034,6 +1344,10 @@ export const usePOSCart = (options: UsePOSCartOptions = {}) => {
     updateItemPrice,
     applyGlobalDiscount,
     applyGlobalDiscountAmount,
+    applySeriesDiscount,
+    parkCurrentCart,
+    restoreParkedCart,
+    discardParkedCart,
     removeItem,
     clearCart,
     setCustomer,
