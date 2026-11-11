@@ -239,33 +239,74 @@ export const A4InvoiceModal: React.FC<A4InvoiceModalProps> = ({
 
               <div className="border-b-2 border-dashed border-black my-2" />
 
-              {/* Thermal Items List */}
-              <div className="space-y-1.5 text-[11px] text-black">
-                <div className="flex justify-between font-black border-b-2 border-black pb-0.5 uppercase">
-                  <span>Item Description</span>
-                  <span>Amount</span>
-                </div>
-                {sale.items.map((item, idx) => {
-                  const unitRate =
-                    item.quantity > 0
-                      ? item.lineTotal / item.quantity
-                      : item.sellingPrice || item.unitPrice || 0;
-                  return (
-                    <div key={idx} className="space-y-0.5">
-                      <div className="font-bold text-black leading-snug">
-                        {idx + 1}. {item.productName}
-                      </div>
-                      <div className="flex justify-between text-black font-semibold text-[10px] pl-2">
-                        <span>
-                          {item.quantity} x Rs. {unitRate.toFixed(2)}
-                        </span>
-                        <span className="font-black text-black font-mono">
-                          Rs. {item.lineTotal.toFixed(2)}
-                        </span>
-                      </div>
-                    </div>
-                  );
-                })}
+              {/* Thermal Items Table (7 Columns: S No, Item Description [Title + Publisher + Series], Class, Qty, MRP Price, Sale Price, Total Price) */}
+              <div className="text-black my-1">
+                <table className="w-full text-black border-collapse text-[9.5px] leading-tight print:text-[8px]">
+                  <thead>
+                    <tr className="border-b-2 border-black font-black uppercase text-[8.5px] print:text-[7.5px]">
+                      <th className="py-1 px-0.5 text-center w-[6%] border-b-2 border-black">S#</th>
+                      <th className="py-1 px-1 text-left w-[34%] border-b-2 border-black">Item Description</th>
+                      <th className="py-1 px-0.5 text-center w-[12%] border-b-2 border-black">Class</th>
+                      <th className="py-1 px-0.5 text-center w-[8%] border-b-2 border-black">Qty</th>
+                      <th className="py-1 px-0.5 text-right w-[13%] border-b-2 border-black">MRP Price</th>
+                      <th className="py-1 px-0.5 text-right w-[13%] border-b-2 border-black">Sale Price</th>
+                      <th className="py-1 px-1 text-right w-[14%] border-b-2 border-black">Total Price</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-black/20">
+                    {sale.items.map((item, idx) => {
+                      const mrp = item.unitPrice ?? item.mrp ?? 0;
+                      const salePrice =
+                        typeof item.effectivePrice === 'number'
+                          ? item.effectivePrice
+                          : item.quantity > 0
+                          ? item.lineTotal / item.quantity
+                          : item.sellingPrice ?? item.unitPrice ?? 0;
+
+                      const publisherSeries = [
+                        item.publisherName && item.publisherName !== 'Unknown' ? item.publisherName : '',
+                        item.seriesName,
+                      ]
+                        .filter(Boolean)
+                        .join(' • ');
+
+                      const itemClass = item.targetClass || (item as any).className || '—';
+
+                      return (
+                        <tr key={idx} className="align-top border-b border-black/20">
+                          <td className="py-1 px-0.5 text-center font-bold text-black font-mono">
+                            {idx + 1}
+                          </td>
+                          <td className="py-1 px-1 text-left">
+                            <div className="font-bold text-black leading-snug break-words">
+                              {item.productName}
+                            </div>
+                            {publisherSeries && (
+                              <div className="thermal-item-subtext text-[8px] print:text-[7px] text-black font-normal leading-tight">
+                                {publisherSeries}
+                              </div>
+                            )}
+                          </td>
+                          <td className="py-1 px-0.5 text-center font-semibold text-black break-words">
+                            {itemClass}
+                          </td>
+                          <td className="py-1 px-0.5 text-center font-black text-black font-mono">
+                            {item.quantity}
+                          </td>
+                          <td className="py-1 px-0.5 text-right font-mono text-black">
+                            {mrp > 0 ? mrp.toFixed(2) : salePrice.toFixed(2)}
+                          </td>
+                          <td className="py-1 px-0.5 text-right font-mono font-medium text-black">
+                            {salePrice.toFixed(2)}
+                          </td>
+                          <td className="py-1 px-1 text-right font-mono font-black text-black">
+                            {item.lineTotal.toFixed(2)}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
 
               <div className="border-b-2 border-dashed border-black my-2" />
@@ -738,6 +779,24 @@ export const A4InvoiceModal: React.FC<A4InvoiceModalProps> = ({
           #thermal-receipt-sheet * {
             color: #000000 !important;
             border-color: #000000 !important;
+          }
+
+          #thermal-receipt-sheet table {
+            width: 100% !important;
+            border-collapse: collapse !important;
+            font-size: 8px !important;
+            line-height: 1.15 !important;
+          }
+
+          #thermal-receipt-sheet th,
+          #thermal-receipt-sheet td {
+            font-size: 8px !important;
+            padding: 1.5px 0.5px !important;
+          }
+
+          #thermal-receipt-sheet .thermal-item-subtext {
+            font-size: 7px !important;
+            line-height: 1.1 !important;
           }
 
           #thermal-receipt-sheet h2,

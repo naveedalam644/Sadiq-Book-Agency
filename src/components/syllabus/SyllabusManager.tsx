@@ -227,11 +227,11 @@ export const SyllabusManager: React.FC = () => {
   // Table Columns for Books in Course Set
   const bookColumns: Column<SyllabusBookItem>[] = [
     {
-      key: 'subject',
-      header: 'Subject',
+      key: 'class',
+      header: 'Class',
       render: (row) => (
         <span className="font-bold text-xs text-[#071F49] bg-slate-100 px-2.5 py-1 rounded-lg border border-slate-200">
-          {row.subject || 'General'}
+          {row.targetClass || row.subject || 'General'}
         </span>
       ),
     },
@@ -241,11 +241,16 @@ export const SyllabusManager: React.FC = () => {
       render: (row) => (
         <div>
           <span className="font-bold text-sm text-slate-900 block">{row.title}</span>
-          <div className="text-[11px] text-slate-500 mt-0.5">
+          <div className="text-[11px] text-slate-500 mt-0.5 flex items-center gap-1 flex-wrap">
             {row.publisherName && (
               <span className="font-semibold text-slate-700">{row.publisherName} • </span>
             )}
             {row.seriesName && <span>{row.seriesName} • </span>}
+            {row.targetClass && (
+              <span className="font-medium text-indigo-700 bg-indigo-50 px-1 py-0.2 rounded">
+                Class: {row.targetClass} •
+              </span>
+            )}
             <span className="font-mono text-slate-400">SKU: {row.sku}</span>
           </div>
         </div>

@@ -598,6 +598,7 @@ export interface SyllabusBookItem {
   publisherName?: string;
   seriesId?: string;
   seriesName?: string;
+  targetClass?: string;
   subject?: string;
   quantity: number;
   retailPrice: number;
