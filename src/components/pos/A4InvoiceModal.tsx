@@ -241,9 +241,9 @@ export const A4InvoiceModal: React.FC<A4InvoiceModalProps> = ({
 
               {/* Thermal Items Table (7 Columns: S No, Item Description [Title + Publisher + Series], Class, Qty, MRP Price, Sale Price, Total Price) */}
               <div className="text-black my-1">
-                <table className="w-full text-black border-collapse text-[9.5px] leading-tight print:text-[8px]">
+                <table className="w-full text-black border-collapse text-[10px] leading-tight font-bold">
                   <thead>
-                    <tr className="border-b-2 border-black font-black uppercase text-[8.5px] print:text-[7.5px]">
+                    <tr className="border-b-2 border-black font-black uppercase text-[9px]">
                       <th className="py-1 px-0.5 text-center w-[6%] border-b-2 border-black">S#</th>
                       <th className="py-1 px-1 text-left w-[34%] border-b-2 border-black">Item Description</th>
                       <th className="py-1 px-0.5 text-center w-[12%] border-b-2 border-black">Class</th>
@@ -253,7 +253,7 @@ export const A4InvoiceModal: React.FC<A4InvoiceModalProps> = ({
                       <th className="py-1 px-1 text-right w-[14%] border-b-2 border-black">Total Price</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-black/20">
+                  <tbody>
                     {sale.items.map((item, idx) => {
                       const mrp = item.unitPrice ?? item.mrp ?? 0;
                       const salePrice =
@@ -273,30 +273,30 @@ export const A4InvoiceModal: React.FC<A4InvoiceModalProps> = ({
                       const itemClass = item.targetClass || (item as any).className || '—';
 
                       return (
-                        <tr key={idx} className="align-top border-b border-black/20">
-                          <td className="py-1 px-0.5 text-center font-bold text-black font-mono">
+                        <tr key={idx} className="align-top border-b border-black">
+                          <td className="py-1 px-0.5 text-center font-black text-black font-mono">
                             {idx + 1}
                           </td>
                           <td className="py-1 px-1 text-left">
-                            <div className="font-bold text-black leading-snug break-words">
+                            <div className="thermal-item-title font-black text-black leading-snug break-words">
                               {item.productName}
                             </div>
                             {publisherSeries && (
-                              <div className="thermal-item-subtext text-[8px] print:text-[7px] text-black font-normal leading-tight">
+                              <div className="thermal-item-subtext text-[9px] text-black font-black leading-tight mt-0.5">
                                 {publisherSeries}
                               </div>
                             )}
                           </td>
-                          <td className="py-1 px-0.5 text-center font-semibold text-black break-words">
+                          <td className="py-1 px-0.5 text-center font-black text-black break-words">
                             {itemClass}
                           </td>
                           <td className="py-1 px-0.5 text-center font-black text-black font-mono">
                             {item.quantity}
                           </td>
-                          <td className="py-1 px-0.5 text-right font-mono text-black">
+                          <td className="py-1 px-0.5 text-right font-mono font-bold text-black">
                             {mrp > 0 ? mrp.toFixed(2) : salePrice.toFixed(2)}
                           </td>
-                          <td className="py-1 px-0.5 text-right font-mono font-medium text-black">
+                          <td className="py-1 px-0.5 text-right font-mono font-black text-black">
                             {salePrice.toFixed(2)}
                           </td>
                           <td className="py-1 px-1 text-right font-mono font-black text-black">
@@ -784,19 +784,40 @@ export const A4InvoiceModal: React.FC<A4InvoiceModalProps> = ({
           #thermal-receipt-sheet table {
             width: 100% !important;
             border-collapse: collapse !important;
-            font-size: 8px !important;
-            line-height: 1.15 !important;
+            font-size: 9.5px !important;
+            font-weight: 800 !important;
+            line-height: 1.25 !important;
+            color: #000000 !important;
           }
 
-          #thermal-receipt-sheet th,
+          #thermal-receipt-sheet th {
+            font-size: 8.5px !important;
+            font-weight: 900 !important;
+            color: #000000 !important;
+            padding: 2px 0.5px !important;
+            border-bottom: 2px solid #000000 !important;
+          }
+
           #thermal-receipt-sheet td {
-            font-size: 8px !important;
-            padding: 1.5px 0.5px !important;
+            font-size: 9.5px !important;
+            font-weight: 800 !important;
+            color: #000000 !important;
+            padding: 2.5px 0.5px !important;
+            border-bottom: 1px solid #000000 !important;
+          }
+
+          #thermal-receipt-sheet .thermal-item-title {
+            font-size: 10px !important;
+            font-weight: 900 !important;
+            color: #000000 !important;
+            line-height: 1.2 !important;
           }
 
           #thermal-receipt-sheet .thermal-item-subtext {
-            font-size: 7px !important;
-            line-height: 1.1 !important;
+            font-size: 8.5px !important;
+            font-weight: 900 !important;
+            color: #000000 !important;
+            line-height: 1.15 !important;
           }
 
           #thermal-receipt-sheet h2,

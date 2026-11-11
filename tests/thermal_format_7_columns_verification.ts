@@ -145,6 +145,24 @@ runTest(7, 'A4 Invoice section remains completely intact with 7 columns', () => 
   assert.ok(a4Section.includes('Total Amount (PKR)'), 'A4 Total Amount (PKR) preserved');
 });
 
+// -----------------------------------------------------------------------------
+// Test 8: Verify intense dark black styling for thermal item description
+// -----------------------------------------------------------------------------
+runTest(8, 'Thermal item description uses intense bold and pure black font weight', () => {
+  assert.ok(
+    thermalSection.includes('thermal-item-title font-black text-black'),
+    'Item title must be font-black text-black for maximum thermal darkness'
+  );
+  assert.ok(
+    thermalSection.includes('thermal-item-subtext text-[9px] text-black font-black'),
+    'Publisher and series subtext must be font-black text-black'
+  );
+  assert.ok(
+    a4ModalContent.includes('#thermal-receipt-sheet .thermal-item-subtext {\n            font-size: 8.5px !important;\n            font-weight: 900 !important;'),
+    'Print stylesheet must enforce font-weight 900 on .thermal-item-subtext'
+  );
+});
+
 console.log('\n====================================================================');
 console.log(` VERIFICATION SUMMARY: ${passedTests}/${passedTests + failedTests} PASSED (${failedTests} FAILED)`);
 console.log('====================================================================\n');
