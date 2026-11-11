@@ -780,17 +780,27 @@ export const processSaleTransaction = async (
     let balanceAddedToCredit = 0;
     let paymentStatus: 'paid' | 'partial' | 'unpaid' = 'unpaid';
 
+    const isParchonOrNoAccount = !customerDoc || input.customerType === 'parchon';
+    let recordedCashTendered = cashTendered;
+
     if (input.paymentMethod === 'cash') {
-      if (cashTendered >= grandTotal) {
+      // For walk-in Parchon counter customers, if cashTendered is 0 or unentered,
+      // default to exact grandTotal so the counter sale completes as fully paid.
+      const effectiveCashTendered = isParchonOrNoAccount && cashTendered <= 0
+        ? grandTotal
+        : cashTendered;
+      recordedCashTendered = effectiveCashTendered;
+
+      if (effectiveCashTendered >= grandTotal) {
         paymentApplied = grandTotal;
-        changeReturned = Math.round((cashTendered - grandTotal) * 100) / 100;
+        changeReturned = Math.round((effectiveCashTendered - grandTotal) * 100) / 100;
         balanceAddedToCredit = 0;
         paymentStatus = 'paid';
       } else {
         // Partial cash payment
-        paymentApplied = cashTendered;
+        paymentApplied = effectiveCashTendered;
         changeReturned = 0;
-        balanceAddedToCredit = Math.round((grandTotal - cashTendered) * 100) / 100;
+        balanceAddedToCredit = Math.round((grandTotal - effectiveCashTendered) * 100) / 100;
         paymentStatus = paymentApplied > 0 ? 'partial' : 'unpaid';
       }
     } else if (input.paymentMethod === 'bank_transfer') {
@@ -809,11 +819,9 @@ export const processSaleTransaction = async (
     // ---------------------------------------------------------------------------------
     // STEP 7: STRICT CREDIT LIMIT VALIDATION
     // ---------------------------------------------------------------------------------
-    if (balanceAddedToCredit > 0) {
-      if (!customerDoc) {
-        throw new Error('Credit sale is not permitted for walk-in cash counter customers. A registered customer account is required.');
-      }
-
+    // Enforce credit limit validation ONLY when a registered customer profile exists.
+    // Walk-in Parchon counter customers do not require a registered account.
+    if (balanceAddedToCredit > 0 && customerDoc) {
       const currentBalance = Number(customerDoc.currentBalance) || 0;
       const creditLimit = Number(customerDoc.creditLimit) || 0;
       const projectedBalance = Math.round((currentBalance + balanceAddedToCredit) * 100) / 100;
@@ -849,8 +857,8 @@ export const processSaleTransaction = async (
     let initialDueDateOverride: InvoiceDueDateOverride | undefined = undefined;
 
     const isCreditSale = balanceAddedToCredit > 0 || input.paymentMethod === 'credit';
-    if (isCreditSale && customerDoc) {
-      if (typeof customerDoc.creditDays === 'number' && customerDoc.creditDays > 0) {
+    if (isCreditSale) {
+      if (customerDoc && typeof customerDoc.creditDays === 'number' && customerDoc.creditDays > 0) {
         effectiveCreditDaysSnapshot = customerDoc.creditDays;
       }
 
@@ -890,7 +898,7 @@ export const processSaleTransaction = async (
       subtotal,
       totalDiscount,
       grandTotal,
-      cashTendered,
+      cashTendered: recordedCashTendered,
       changeReturned,
       paymentApplied,
       balanceAddedToCredit,

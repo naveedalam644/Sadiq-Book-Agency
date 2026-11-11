@@ -809,9 +809,9 @@ export const POS: React.FC = () => {
 
   const changeReturned = paymentMethod === 'cash' ? Math.max(0, numericTendered - grandTotal) : 0;
   const balanceAddedToCredit =
-    customerType !== 'parchon' && paymentMethod === 'credit'
+    paymentMethod === 'credit'
       ? grandTotal
-      : customerType !== 'parchon' && numericTendered < grandTotal
+      : paymentMethod === 'cash' && cashTendered !== '' && numericTendered < grandTotal
       ? grandTotal - numericTendered
       : 0;
 
@@ -847,7 +847,7 @@ export const POS: React.FC = () => {
       }
     }
 
-    // Require due date if adding to credit
+    // Require due date if adding to credit for registered customer accounts
     const isCredit = balanceAddedToCredit > 0 || paymentMethod === 'credit';
     if (isCredit && customerType !== 'parchon') {
       if (!customDueDate || !customDueDate.trim()) {
@@ -863,7 +863,12 @@ export const POS: React.FC = () => {
     setIsSubmitting(true);
 
     try {
-      const payload = prepareSalePayload(numericTendered, paymentMethod, customDueDate);
+      const effectiveTendered =
+        paymentMethod === 'cash' && (numericTendered <= 0 || !cashTendered)
+          ? grandTotal
+          : numericTendered;
+
+      const payload = prepareSalePayload(effectiveTendered, paymentMethod, customDueDate);
       if (overrideToUse) {
         payload.creditLimitOverride = overrideToUse;
       }
@@ -1963,20 +1968,18 @@ export const POS: React.FC = () => {
                 <span>Bank</span>
               </button>
 
-              {customerType !== 'parchon' && (
-                <button
-                  type="button"
-                  onClick={() => setPaymentMethod('credit')}
-                  className={`flex-1 py-1 rounded flex items-center justify-center gap-1 transition-colors ${
-                    paymentMethod === 'credit'
-                      ? 'bg-amber-600 text-white shadow-2xs'
-                      : 'text-slate-600 hover:bg-slate-200'
-                  }`}
-                >
-                  <Store className="w-3 h-3" />
-                  <span>Khata Credit</span>
-                </button>
-              )}
+              <button
+                type="button"
+                onClick={() => setPaymentMethod('credit')}
+                className={`flex-1 py-1 rounded flex items-center justify-center gap-1 transition-colors ${
+                  paymentMethod === 'credit'
+                    ? 'bg-amber-600 text-white shadow-2xs'
+                    : 'text-slate-600 hover:bg-slate-200'
+                }`}
+              >
+                <Store className="w-3 h-3" />
+                <span>Khata Credit</span>
+              </button>
             </div>
 
             {/* Cash Tendered & Change Returned (When Cash Mode) */}
@@ -2027,45 +2030,64 @@ export const POS: React.FC = () => {
             )}
 
             {/* Khata Balance Notification & Due Date Selection */}
-            {(balanceAddedToCredit > 0 || paymentMethod === 'credit') && customerType !== 'parchon' && (
+            {(balanceAddedToCredit > 0 || paymentMethod === 'credit') && (
               <div className="bg-amber-50 border border-amber-200 text-amber-900 p-2 rounded-lg text-xs space-y-1.5">
                 <div className="flex justify-between font-bold text-[11px]">
-                  <span>Will add to Khata:</span>
+                  <span>Will add to Khata / Balance:</span>
                   <span className="font-mono">PKR {balanceAddedToCredit.toFixed(2)}</span>
                 </div>
 
-                <div className="pt-1 border-t border-amber-200/80 space-y-1">
-                  <div className="flex items-center justify-between text-[10.5px]">
-                    <span className="font-bold flex items-center gap-1 text-slate-800">
-                      <Calendar className="w-3 h-3 text-amber-700" />
-                      <span>Due Date:</span>
-                    </span>
-                    {customer?.creditDays ? (
-                      <span className="text-[9.5px] text-amber-800 font-semibold">
-                        Terms: {customer.creditDays}d
+                {customerType !== 'parchon' ? (
+                  <div className="pt-1 border-t border-amber-200/80 space-y-1">
+                    <div className="flex items-center justify-between text-[10.5px]">
+                      <span className="font-bold flex items-center gap-1 text-slate-800">
+                        <Calendar className="w-3 h-3 text-amber-700" />
+                        <span>Due Date:</span>
                       </span>
-                    ) : (
-                      <span className="text-[9.5px] font-bold text-red-600">
-                        * Required
-                      </span>
+                      {customer?.creditDays ? (
+                        <span className="text-[9.5px] text-amber-800 font-semibold">
+                          Terms: {customer.creditDays}d
+                        </span>
+                      ) : (
+                        <span className="text-[9.5px] font-bold text-red-600">
+                          * Required
+                        </span>
+                      )}
+                    </div>
+
+                    <input
+                      type="date"
+                      min={new Date().toISOString().split('T')[0]}
+                      value={customDueDate}
+                      onChange={(e) => setCustomDueDate(e.target.value)}
+                      required
+                      className="w-full bg-white border border-amber-300 rounded px-2 py-1 text-xs font-bold text-slate-900 focus:outline-none focus:ring-1 focus:ring-[#071F49] h-6"
+                    />
+
+                    {customDueDate && customer?.creditDays && customDueDate !== projectedDueDate && (
+                      <p className="text-[9.5px] text-indigo-700 font-bold">
+                        Override: differs from standard {customer.creditDays}-day term.
+                      </p>
                     )}
                   </div>
+                ) : (
+                  <div className="pt-1 border-t border-amber-200/80 space-y-1">
+                    <div className="flex items-center justify-between text-[10.5px]">
+                      <span className="font-bold flex items-center gap-1 text-slate-800">
+                        <Calendar className="w-3 h-3 text-amber-700" />
+                        <span>Due Date (Optional):</span>
+                      </span>
+                    </div>
 
-                  <input
-                    type="date"
-                    min={new Date().toISOString().split('T')[0]}
-                    value={customDueDate}
-                    onChange={(e) => setCustomDueDate(e.target.value)}
-                    required
-                    className="w-full bg-white border border-amber-300 rounded px-2 py-1 text-xs font-bold text-slate-900 focus:outline-none focus:ring-1 focus:ring-[#071F49] h-6"
-                  />
-
-                  {customDueDate && customer?.creditDays && customDueDate !== projectedDueDate && (
-                    <p className="text-[9.5px] text-indigo-700 font-bold">
-                      Override: differs from standard {customer.creditDays}-day term.
-                    </p>
-                  )}
-                </div>
+                    <input
+                      type="date"
+                      min={new Date().toISOString().split('T')[0]}
+                      value={customDueDate}
+                      onChange={(e) => setCustomDueDate(e.target.value)}
+                      className="w-full bg-white border border-amber-300 rounded px-2 py-1 text-xs font-bold text-slate-900 focus:outline-none focus:ring-1 focus:ring-[#071F49] h-6"
+                    />
+                  </div>
+                )}
               </div>
             )}
 
