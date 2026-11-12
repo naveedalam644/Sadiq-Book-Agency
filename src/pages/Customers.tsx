@@ -10,6 +10,7 @@ import {
   Percent,
   TrendingDown,
   Receipt,
+  Globe,
 } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
@@ -275,6 +276,20 @@ export const Customers: React.FC = () => {
           >
             <Eye className="w-4 h-4" />
           </button>
+
+          {row.type !== 'parchon' && (
+            <button
+              type="button"
+              onClick={() => {
+                const url = `${window.location.origin}/khata/${row.portalCode || 'wh-' + row.id.slice(0, 8)}`;
+                window.open(url, '_blank');
+              }}
+              className="p-1.5 text-slate-400 hover:text-sky-700 hover:bg-sky-50 rounded-lg transition"
+              title="Open Online Khata Portal Link"
+            >
+              <Globe className="w-4 h-4" />
+            </button>
+          )}
 
           <button
             type="button"

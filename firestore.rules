@@ -167,5 +167,24 @@ service cloud.firestore {
       allow read, create: if isStaff();
       allow update, delete: if isStoreAdmin();
     }
+
+    // -------------------------------------------------------------------------
+    // 17. WHOLESALE CUSTOMER ONLINE KHATA PORTAL (READ-ONLY FOR WHOLESALE CLIENTS)
+    // -------------------------------------------------------------------------
+    match /customerPortals/{portalCode} {
+      // Allows read for wholesale clients via their secret portalCode
+      allow read: if true;
+      allow write: if isStaff();
+
+      match /invoices/{invoiceId} {
+        allow read: if true;
+        allow write: if isStaff();
+      }
+
+      match /ledger/{entryId} {
+        allow read: if true;
+        allow write: if isStaff();
+      }
+    }
   }
 }

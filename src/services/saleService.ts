@@ -29,6 +29,7 @@ import type {
 import { logAuditEvent } from './auditService';
 import { updateInventorySummaryDeltas } from './summaryService';
 import { calculateInvoiceDueDate } from './dueDateService';
+import { syncCustomerPortal } from './customerPortalService';
 import {
   getActiveBatchesForProduct,
   depleteFifoBatchesInTransaction,
@@ -809,11 +810,25 @@ export const processSaleTransaction = async (
       balanceAddedToCredit = 0;
       paymentStatus = 'paid';
     } else {
-      // Full Credit
-      paymentApplied = 0;
-      changeReturned = 0;
-      balanceAddedToCredit = grandTotal;
-      paymentStatus = 'unpaid';
+      // Khata Credit sale (supports optional immediate partial cash down-payment)
+      if (cashTendered > 0) {
+        if (cashTendered >= grandTotal) {
+          paymentApplied = grandTotal;
+          changeReturned = Math.round((cashTendered - grandTotal) * 100) / 100;
+          balanceAddedToCredit = 0;
+          paymentStatus = 'paid';
+        } else {
+          paymentApplied = cashTendered;
+          changeReturned = 0;
+          balanceAddedToCredit = Math.round((grandTotal - cashTendered) * 100) / 100;
+          paymentStatus = 'partial';
+        }
+      } else {
+        paymentApplied = 0;
+        changeReturned = 0;
+        balanceAddedToCredit = grandTotal;
+        paymentStatus = 'unpaid';
+      }
     }
 
     // ---------------------------------------------------------------------------------
@@ -976,7 +991,10 @@ export const processSaleTransaction = async (
         customerName: customerDoc.shopName || customerDoc.name,
         entryType: 'debit', // Debit = debt added
         referenceInvoiceNo: invoiceNo,
-        description: `Sale Invoice #${invoiceNo}`,
+        description:
+          paymentApplied > 0
+            ? `Sale Invoice #${invoiceNo} (Bill: Rs. ${grandTotal}, Cash: Rs. ${paymentApplied}, Khata: Rs. ${balanceAddedToCredit})`
+            : `Sale Invoice #${invoiceNo}`,
         amount: balanceAddedToCredit,
         runningBalance: newCustomerBalance,
         recordedByUserId: effectiveOperatorId,
@@ -1059,6 +1077,13 @@ export const processSaleTransaction = async (
     ).catch((err) => {
       console.warn('Failed to log sale audit event:', err);
     });
+
+    // Automatically synchronize the wholesale customer's Khata portal with this new invoice
+    if (committedSale.customerId) {
+      syncCustomerPortal(committedSale.customerId).catch((portalErr) => {
+        console.warn('Background customer portal sync error:', portalErr);
+      });
+    }
   }
 
   return {

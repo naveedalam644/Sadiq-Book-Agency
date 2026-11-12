@@ -36,8 +36,70 @@ export interface CustomerDocument {
   isActive: boolean;
   notes?: string;
   lastSaleId?: string; // Links balance update to sale via getAfter()
+  portalCode?: string; // Unique URL token for customer read-only Khata portal (e.g. wh-9a8b7c6d)
+  portalPassword?: string; // Access PIN / password assigned by store for portal entry
+  portalEnabled?: boolean; // Whether the customer's online Khata portal is active
   createdAt: string;
   updatedAt: string;
+}
+
+// 2b. Wholesale Customer Public Portal ('customerPortals')
+export interface CustomerPortalDocument {
+  portalCode: string;
+  customerId: string;
+  customerName: string;
+  shopName: string;
+  phone: string;
+  city?: string;
+  address?: string;
+  currentBalance: number;
+  totalPurchases: number;
+  totalPaid: number;
+  creditLimit: number;
+  creditDays?: number;
+  portalPassword: string;
+  portalEnabled: boolean;
+  lastUpdated: string;
+}
+
+export interface CustomerPortalInvoiceItem {
+  productId: string;
+  productName: string;
+  sku: string;
+  publisherName?: string;
+  seriesName?: string;
+  targetClass?: string;
+  quantity: number;
+  mrp: number;
+  discountPercent: number;
+  sellingPrice: number;
+  lineTotal: number;
+}
+
+export interface CustomerPortalInvoiceSummary {
+  id: string;
+  invoiceNo: string;
+  saleDate: string;
+  createdAt?: string;
+  dueDate?: string;
+  itemsCount: number;
+  subtotal: number;
+  totalDiscount: number;
+  grandTotal: number;
+  paymentStatus: 'paid' | 'partial' | 'unpaid';
+  paymentMethod: string;
+  items: CustomerPortalInvoiceItem[];
+}
+
+export interface CustomerPortalLedgerEntry {
+  id: string;
+  date: string;
+  reference: string;
+  entryType: 'debit' | 'credit';
+  description: string;
+  debit: number;
+  credit: number;
+  runningBalance: number;
 }
 
 // 2b. Customer Discounts Collection ('customerDiscounts')

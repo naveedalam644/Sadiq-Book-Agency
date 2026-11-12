@@ -15,6 +15,11 @@ import {
   Calendar,
   Clock,
   Printer,
+  Globe,
+  ExternalLink,
+  Copy,
+  Check,
+  RefreshCw,
 } from 'lucide-react';
 import { WhatsAppIcon } from '../common/WhatsAppIcon';
 import { Modal } from '../common/Modal';
@@ -27,7 +32,12 @@ import {
   buildAccountStatementWhatsAppMessage,
   buildInvoiceWhatsAppMessage,
 } from '../../utils/whatsappTemplates';
+import {
+  syncCustomerPortal,
+  buildCustomerPortalWhatsAppMessage,
+} from '../../services/customerPortalService';
 import { useAuth } from '../../hooks/useAuth';
+import { useToast } from '../../hooks/useToast';
 import type {
   CustomerDocument,
   CustomerDiscountDocument,
@@ -63,6 +73,7 @@ export const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
   onOpenDiscountModal,
 }) => {
   const { isAdmin } = useAuth();
+  const { success: toastSuccess, error: toastError } = useToast();
   const [activeTab, setActiveTab] = useState<'overview' | 'discounts' | 'invoices' | 'ledger'>('overview');
   const [discounts, setDiscounts] = useState<CustomerDiscountDocument[]>([]);
   const [ledgerEntries, setLedgerEntries] = useState<CustomerLedgerDocument[]>([]);
@@ -72,12 +83,40 @@ export const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
   const [isBillModalOpen, setIsBillModalOpen] = useState(false);
   const [loadingData, setLoadingData] = useState(false);
   const [deletingDiscountId, setDeletingDiscountId] = useState<string | null>(null);
+  const [copiedPortal, setCopiedPortal] = useState(false);
+  const [isSyncingPortal, setIsSyncingPortal] = useState(false);
 
   // WhatsApp & Invoice Share State
   const [isWhatsAppModalOpen, setIsWhatsAppModalOpen] = useState(false);
   const [whatsAppMessageType, setWhatsAppMessageType] = useState<'outstanding_balance' | 'account_statement' | 'invoice'>('outstanding_balance');
   const [selectedInvoiceForA4, setSelectedInvoiceForA4] = useState<SaleDocument | null>(null);
   const [selectedInvoiceForWhatsApp, setSelectedInvoiceForWhatsApp] = useState<SaleDocument | null>(null);
+
+  const handleSharePortalWhatsApp = () => {
+    if (!customer) return;
+    const url = `${window.location.origin}/khata/${customer.portalCode || 'wh-' + customer.id.slice(0, 8)}`;
+    const msg = buildCustomerPortalWhatsAppMessage({
+      customer,
+      portalUrl: url,
+    });
+    const phone = customer.phone ? customer.phone.replace(/[^0-9]/g, '') : '';
+    const cleanPhone = phone.startsWith('0') ? '92' + phone.slice(1) : phone;
+    const waUrl = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(msg)}`;
+    window.open(waUrl, '_blank');
+  };
+
+  const handleSyncPortal = async () => {
+    if (!customer) return;
+    setIsSyncingPortal(true);
+    try {
+      await syncCustomerPortal(customer.id);
+      toastSuccess('Khata portal synchronized with latest invoices and ledger!');
+    } catch (err: any) {
+      toastError(err?.message || 'Failed to sync Khata portal');
+    } finally {
+      setIsSyncingPortal(false);
+    }
+  };
 
   const handleOpenWhatsApp = (type: 'outstanding_balance' | 'account_statement') => {
     setSelectedInvoiceForWhatsApp(null);
@@ -361,6 +400,96 @@ export const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
                     <span>Customer has exceeded approved credit limit by {formatCurrency(currentBal - creditLimit)}.</span>
                   </div>
                 )}
+              </div>
+            )}
+
+            {/* Wholesale Online Khata Portal Card */}
+            {customer.type !== 'parchon' && (
+              <div className="p-4 bg-linear-to-r from-sky-50 via-indigo-50/40 to-amber-50/50 border border-sky-200 rounded-2xl shadow-xs space-y-3">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-9 h-9 rounded-xl bg-[#071F49] text-[#F5B51B] flex items-center justify-center shadow-xs shrink-0">
+                      <Globe className="w-5 h-5 text-[#F5B51B]" />
+                    </div>
+                    <div>
+                      <h4 className="font-bold text-xs sm:text-sm text-[#071F49] leading-tight">
+                        Wholesale Online Khata Portal (آن لائن کھاتہ پورٹل لنک)
+                      </h4>
+                      <p className="text-[11px] text-slate-500">
+                        Customer can view all invoices, book lists, discounts, and ledger balance in realtime.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleSyncPortal}
+                      disabled={isSyncingPortal}
+                      className="px-2.5 py-1.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer disabled:opacity-60 shadow-xs"
+                      title="Sync latest bills & payments to customer portal"
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 ${isSyncingPortal ? 'animate-spin text-[#071F49]' : ''}`} />
+                      <span>{isSyncingPortal ? 'Syncing...' : 'Sync Portal'}</span>
+                    </button>
+
+                    <a
+                      href={`/khata/${customer.portalCode || 'wh-' + customer.id.slice(0, 8)}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-2.5 py-1.5 bg-[#071F49] hover:bg-[#0c2f6d] text-white rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs"
+                    >
+                      <ExternalLink className="w-3.5 h-3.5 text-[#F5B51B]" />
+                      <span>Open Portal</span>
+                    </a>
+                  </div>
+                </div>
+
+                {/* Link & Password Display Strip */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5 pt-1">
+                  <div className="md:col-span-2 p-2.5 bg-white rounded-xl border border-sky-200 flex items-center justify-between gap-2 shadow-xs">
+                    <div className="truncate text-xs font-mono text-slate-800">
+                      <span className="text-slate-400 font-sans font-bold mr-1">Link:</span>
+                      <span className="text-[#071F49] font-bold">
+                        {typeof window !== 'undefined'
+                          ? `${window.location.origin}/khata/${customer.portalCode || 'wh-' + customer.id.slice(0, 8)}`
+                          : `/khata/${customer.portalCode}`}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const url = `${window.location.origin}/khata/${customer.portalCode || 'wh-' + customer.id.slice(0, 8)}`;
+                        navigator.clipboard.writeText(url);
+                        setCopiedPortal(true);
+                        setTimeout(() => setCopiedPortal(false), 2500);
+                      }}
+                      className="px-2.5 py-1 bg-sky-100 hover:bg-sky-200 text-sky-950 rounded font-bold text-[11px] transition flex items-center gap-1 shrink-0 cursor-pointer"
+                    >
+                      {copiedPortal ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                      <span>{copiedPortal ? 'Copied' : 'Copy'}</span>
+                    </button>
+                  </div>
+
+                  <div className="p-2.5 bg-white rounded-xl border border-sky-200 flex items-center justify-between gap-2 shadow-xs">
+                    <div className="text-xs">
+                      <span className="text-slate-400 font-sans font-bold mr-1">PIN:</span>
+                      <span className="font-mono font-black text-slate-900 tracking-wider">
+                        {customer.portalPassword || '123456'}
+                      </span>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={handleSharePortalWhatsApp}
+                      className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded font-bold text-[11px] transition flex items-center gap-1 shrink-0 cursor-pointer shadow-xs"
+                      title="Share Portal Link & Password via WhatsApp"
+                    >
+                      <WhatsAppIcon className="w-3.5 h-3.5" />
+                      <span>WhatsApp Link</span>
+                    </button>
+                  </div>
+                </div>
               </div>
             )}
 

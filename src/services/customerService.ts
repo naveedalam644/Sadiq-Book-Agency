@@ -16,6 +16,11 @@ import { db } from '../config/firebase';
 import type { CustomerDocument, CustomerType } from '../types/database';
 import { logAuditEvent } from './auditService';
 import { setCustomerOpeningBalanceTransaction } from './ledgerService';
+import {
+  generatePortalCode,
+  generateDefaultPortalPin,
+  syncCustomerPortal,
+} from './customerPortalService';
 
 export interface CustomerFilters {
   type?: CustomerType | 'all';
@@ -220,6 +225,9 @@ export interface CreateCustomerInput {
   creditDays?: number;
   initialBalance?: number; // Opening balance from paper registers
   notes?: string;
+  portalCode?: string;
+  portalPassword?: string;
+  portalEnabled?: boolean;
 }
 
 export const createCustomer = async (
@@ -241,6 +249,10 @@ export const createCustomer = async (
   const now = new Date().toISOString();
   const initBal = Number(input.initialBalance) || 0;
 
+  const portalCode = input.portalCode?.trim().toLowerCase() || generatePortalCode();
+  const portalPassword = input.portalPassword?.trim() || generateDefaultPortalPin();
+  const portalEnabled = input.portalEnabled !== false;
+
   const newCustomer: CustomerDocument = {
     id: custRef.id,
     name: input.name.trim() || (input.type === 'parchon' ? 'Walk-in Retail Customer' : 'Customer'),
@@ -258,6 +270,9 @@ export const createCustomer = async (
     currentBalance: 0, // Initialized to 0; opening balance set via transaction below
     isActive: true,
     notes: input.notes?.trim() || '',
+    portalCode,
+    portalPassword,
+    portalEnabled,
     createdAt: now,
     updatedAt: now,
   };
@@ -275,6 +290,11 @@ export const createCustomer = async (
       console.warn('Customer created but opening balance ledger record failed:', ledgerErr);
     }
   }
+
+  // Asynchronously initialize the public Khata portal in the background
+  syncCustomerPortal(newCustomer.id).catch((portalErr) =>
+    console.warn('Initial portal sync notice:', portalErr)
+  );
 
   await logAuditEvent(
     'CREATE_CUSTOMER',
@@ -327,10 +347,18 @@ export const updateCustomer = async (
     payload.creditDays = updates.creditDays ? Math.max(0, Number(updates.creditDays)) : 0;
   }
   if (updates.notes !== undefined) payload.notes = updates.notes.trim() || '';
+  if (updates.portalCode !== undefined) payload.portalCode = updates.portalCode.trim().toLowerCase();
+  if (updates.portalPassword !== undefined) payload.portalPassword = updates.portalPassword.trim();
+  if (updates.portalEnabled !== undefined) payload.portalEnabled = updates.portalEnabled;
 
   const docRef = doc(db, 'customers', id);
   await updateDoc(docRef, payload);
   invalidateCustomerCache();
+
+  // Asynchronously synchronize Khata portal
+  syncCustomerPortal(id).catch((portalErr) =>
+    console.warn('Customer update portal sync notice:', portalErr)
+  );
 
   await logAuditEvent(
     'UPDATE_CUSTOMER',

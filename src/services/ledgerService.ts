@@ -151,6 +151,15 @@ export const recordCustomerPaymentTransaction = async (
     // Graceful fallback for non-browser or test runner environments
   }
 
+  try {
+    const { syncCustomerPortal } = await import('./customerPortalService');
+    syncCustomerPortal(input.customerId).catch((portalErr) =>
+      console.warn('Customer portal sync notice after payment:', portalErr)
+    );
+  } catch {
+    // Graceful fallback
+  }
+
   return {
     newBalance: finalBalance,
     receiptNo,

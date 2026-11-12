@@ -37,6 +37,56 @@ export const formatDateTime = (isoString?: string): string => {
   }).format(date);
 };
 
+/**
+ * Formats a timestamp into 12-hour format with AM/PM (e.g. "12 Nov 2026, 09:16 AM")
+ */
+export const formatDateTime12 = (isoString?: string): string => {
+  if (!isoString) return '—';
+  const date = new Date(isoString);
+  if (isNaN(date.getTime())) return isoString;
+  const datePart = new Intl.DateTimeFormat('en-GB', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  }).format(date);
+
+  const hasTime = isoString.includes('T') || isoString.includes(':');
+  if (!hasTime) return datePart;
+
+  const timePart = new Intl.DateTimeFormat('en-US', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true,
+  }).format(date);
+
+  return `${datePart}, ${timePart}`;
+};
+
+/**
+ * Formats just the 12-hour time string with AM/PM (e.g. "09:16 AM")
+ */
+export const formatTime12 = (isoString?: string): string => {
+  if (!isoString) return '';
+  const date = new Date(isoString);
+  if (isNaN(date.getTime())) return '';
+  return new Intl.DateTimeFormat('en-US', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true,
+  }).format(date);
+};
+
+/**
+ * Helper to display invoice date and creation time together in 12-hour format
+ */
+export const formatInvoiceDisplayDateTime = (saleDate?: string, createdAt?: string): string => {
+  if (createdAt && (createdAt.includes('T') || createdAt.includes(':'))) {
+    const formatted = formatDateTime12(createdAt);
+    if (formatted && formatted !== '—') return formatted;
+  }
+  return formatDate(saleDate);
+};
+
 export const getGreetingByTime = (): string => {
   const hour = new Date().getHours();
   if (hour < 12) return 'Good Morning';

@@ -18,13 +18,16 @@ import { Reports } from '../pages/Reports';
 import { Expenses } from '../pages/Expenses';
 import { RoughBill } from '../pages/RoughBill';
 import { SystemStatus } from '../pages/SystemStatus';
+import { CustomerKhataPortal } from '../pages/CustomerKhataPortal';
 import { NotFound } from '../pages/NotFound';
 
 export const AppRoutes: React.FC = () => {
   return (
     <Routes>
-      {/* Public Route */}
+      {/* Public Routes */}
       <Route path="/login" element={<Login />} />
+      <Route path="/khata/:portalCode" element={<CustomerKhataPortal />} />
+      <Route path="/portal/:portalCode" element={<CustomerKhataPortal />} />
 
       {/* Protected Routes inside AppLayout */}
       <Route element={<ProtectedRoute />}>

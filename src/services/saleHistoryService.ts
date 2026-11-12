@@ -576,5 +576,17 @@ export const processSaleReturnTransaction = async (
     console.warn('Failed to log sales return audit event:', err);
   });
 
+  // Automatically synchronize customer portal if return was for registered customer
+  if (originalSale.customerId) {
+    try {
+      const { syncCustomerPortal } = await import('./customerPortalService');
+      syncCustomerPortal(originalSale.customerId).catch((err) =>
+        console.warn('Customer portal sync error after return:', err)
+      );
+    } catch {
+      // Graceful fallback
+    }
+  }
+
   return committedReturnDoc;
 };

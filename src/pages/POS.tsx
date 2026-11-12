@@ -845,15 +845,22 @@ export const POS: React.FC = () => {
   useEffect(() => {
     if (paymentMethod === 'cash' && grandTotal > 0 && !cashTendered) {
       setCashTendered(String(grandTotal));
+    } else if (paymentMethod === 'credit' && cashTendered === String(grandTotal)) {
+      setCashTendered('0');
     }
   }, [grandTotal, paymentMethod, cashTendered]);
 
-  const changeReturned = paymentMethod === 'cash' ? Math.max(0, numericTendered - grandTotal) : 0;
+  const creditCashPaid = paymentMethod === 'credit' ? Math.min(grandTotal, numericTendered) : 0;
   const balanceAddedToCredit =
     paymentMethod === 'credit'
-      ? grandTotal
+      ? Math.max(0, grandTotal - creditCashPaid)
       : paymentMethod === 'cash' && cashTendered !== '' && numericTendered < grandTotal
       ? grandTotal - numericTendered
+      : 0;
+
+  const changeReturned =
+    paymentMethod === 'cash' || paymentMethod === 'credit'
+      ? Math.max(0, numericTendered - grandTotal)
       : 0;
 
   // ---------------------------------------------------------------------------------
@@ -905,7 +912,9 @@ export const POS: React.FC = () => {
 
     try {
       const effectiveTendered =
-        paymentMethod === 'cash' && (numericTendered <= 0 || !cashTendered)
+        paymentMethod === 'credit'
+          ? numericTendered
+          : paymentMethod === 'cash' && (numericTendered <= 0 || !cashTendered)
           ? grandTotal
           : numericTendered;
 
@@ -1998,7 +2007,12 @@ export const POS: React.FC = () => {
             <div className="flex gap-1 bg-slate-100 p-0.5 rounded-lg text-[11px] font-bold">
               <button
                 type="button"
-                onClick={() => setPaymentMethod('cash')}
+                onClick={() => {
+                  setPaymentMethod('cash');
+                  if (!cashTendered || cashTendered === '0') {
+                    setCashTendered(String(grandTotal));
+                  }
+                }}
                 className={`flex-1 py-1 rounded flex items-center justify-center gap-1 transition-colors ${
                   paymentMethod === 'cash' ? 'bg-[#071F49] text-white shadow-2xs' : 'text-slate-600 hover:bg-slate-200'
                 }`}
@@ -2009,7 +2023,10 @@ export const POS: React.FC = () => {
 
               <button
                 type="button"
-                onClick={() => setPaymentMethod('bank_transfer')}
+                onClick={() => {
+                  setPaymentMethod('bank_transfer');
+                  setCashTendered('');
+                }}
                 className={`flex-1 py-1 rounded flex items-center justify-center gap-1 transition-colors ${
                   paymentMethod === 'bank_transfer'
                     ? 'bg-[#071F49] text-white shadow-2xs'
@@ -2081,13 +2098,96 @@ export const POS: React.FC = () => {
               </div>
             )}
 
+            {/* Khata Credit Partial Cash Payment Option */}
+            {paymentMethod === 'credit' && (
+              <div className="space-y-1.5 bg-amber-50/80 p-2 rounded-lg border border-amber-300">
+                <div className="flex items-center justify-between gap-1 flex-wrap">
+                  <div className="flex items-center gap-1.5 text-[11px] font-bold text-amber-950">
+                    <Banknote className="w-3.5 h-3.5 text-amber-700 shrink-0" />
+                    <span>Cash Paid Now:</span>
+                    <input
+                      type="number"
+                      min="0"
+                      value={cashTendered}
+                      onChange={(e) => setCashTendered(e.target.value)}
+                      placeholder="0"
+                      className="w-24 text-right font-black text-xs border border-amber-300 rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-amber-600 bg-white h-6"
+                    />
+                  </div>
+
+                  {/* Quick cash chips */}
+                  <div className="flex gap-1 items-center flex-wrap">
+                    <button
+                      type="button"
+                      onClick={() => setCashTendered('0')}
+                      className={`px-1.5 py-0.5 border rounded text-[9.5px] font-bold transition cursor-pointer ${
+                        numericTendered === 0
+                          ? 'bg-amber-800 text-white border-amber-900 shadow-2xs'
+                          : 'bg-white border-amber-200 text-amber-900 hover:bg-amber-100'
+                      }`}
+                      title="0 Cash - Entire bill added to Khata debt"
+                    >
+                      0 (Full Khata)
+                    </button>
+                    {[500, 1000, 5000].map((denom) => (
+                      <button
+                        key={denom}
+                        type="button"
+                        onClick={() => setCashTendered(String(denom))}
+                        className="px-1.5 py-0.5 bg-white border border-amber-200 rounded text-[9.5px] font-bold text-slate-700 hover:bg-amber-100 cursor-pointer"
+                      >
+                        +{denom}
+                      </button>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() => setCashTendered(String(grandTotal))}
+                      className="px-1.5 py-0.5 bg-[#F5B51B] text-slate-900 rounded text-[9.5px] font-black hover:bg-[#e0a415] cursor-pointer"
+                      title="Customer pays full bill in cash right now"
+                    >
+                      Exact
+                    </button>
+                  </div>
+                </div>
+
+                {/* Live Khata vs Cash Breakdown */}
+                <div className="grid grid-cols-2 gap-1.5 pt-1 border-t border-amber-200/80 text-[10.5px]">
+                  <div className="bg-white/90 p-1.5 rounded border border-amber-200">
+                    <span className="text-slate-500 block text-[9px] uppercase font-bold">
+                      Cash Received:
+                    </span>
+                    <span className="font-mono font-black text-emerald-700 text-xs">
+                      PKR {creditCashPaid.toFixed(2)}
+                    </span>
+                  </div>
+                  <div className="bg-white/90 p-1.5 rounded border border-amber-200">
+                    <span className="text-slate-500 block text-[9px] uppercase font-bold">
+                      Added to Khata:
+                    </span>
+                    <span className="font-mono font-black text-rose-700 text-xs">
+                      PKR {balanceAddedToCredit.toFixed(2)}
+                    </span>
+                  </div>
+                </div>
+
+                {changeReturned > 0 && (
+                  <div className="flex justify-between text-[11px] font-bold text-emerald-700 pt-0.5 border-t border-amber-200">
+                    <span>Change to Return:</span>
+                    <span className="font-mono">PKR {changeReturned.toFixed(2)}</span>
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Khata Balance Notification & Due Date Selection */}
             {(balanceAddedToCredit > 0 || paymentMethod === 'credit') && (
               <div className="bg-amber-50 border border-amber-200 text-amber-900 p-2 rounded-lg text-xs space-y-1.5">
-                <div className="flex justify-between font-bold text-[11px]">
-                  <span>Will add to Khata / Balance:</span>
-                  <span className="font-mono">PKR {balanceAddedToCredit.toFixed(2)}</span>
-                </div>
+                {paymentMethod !== 'credit' && (
+                  <div className="flex justify-between font-bold text-[11px]">
+                    <span>Will add to Khata / Balance:</span>
+                    <span className="font-mono">PKR {balanceAddedToCredit.toFixed(2)}</span>
+                  </div>
+                )}
 
                 {customerType !== 'parchon' ? (
                   <div className="pt-1 border-t border-amber-200/80 space-y-1">
