@@ -152,6 +152,7 @@ export const POS: React.FC = () => {
 
   // 1c. Barcode Scanner State & Handlers (Mobile Camera & Handheld Gun)
   const [isScannerModalOpen, setIsScannerModalOpen] = useState(false);
+  const [pendingNewBarcode, setPendingNewBarcode] = useState<string>('');
 
   const handleBarcodeScanned = useCallback(
     async (scannedCode: string) => {
@@ -166,7 +167,9 @@ export const POS: React.FC = () => {
           toastSuccess(`Scanned & Added: "${product.title}"`);
         } else {
           playScannerErrorTone();
-          toastError(`No product found with barcode "${clean}". Quick Add is available via Add Product.`);
+          setPendingNewBarcode(clean);
+          toastError(`Product not registered for barcode "${clean}". Opening Add Product...`);
+          setIsAddProductModalOpen(true);
         }
       } catch (err) {
         console.error('Barcode scan error in POS:', err);
@@ -2269,8 +2272,12 @@ export const POS: React.FC = () => {
 
       <ProductFormModal
         isOpen={isAddProductModalOpen}
-        onClose={() => setIsAddProductModalOpen(false)}
+        onClose={() => {
+          setIsAddProductModalOpen(false);
+          setPendingNewBarcode('');
+        }}
         onSubmit={handleSaveProduct}
+        initialBarcode={pendingNewBarcode}
         categories={categories}
       />
 

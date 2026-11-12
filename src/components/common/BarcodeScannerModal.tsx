@@ -10,6 +10,7 @@ import {
   Volume2,
 } from 'lucide-react';
 import { playScannerBeep } from '../../utils/soundEffects';
+import { useBarcodeScanner } from '../../hooks/useBarcodeScanner';
 
 export interface BarcodeScannerModalProps {
   isOpen: boolean;
@@ -26,7 +27,7 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
   onScan,
   title = 'Scan Barcode',
   mode = 'continuous',
-  instructions = 'Point camera at the barcode printed on the book or stationery',
+  instructions = 'Point camera at barcode OR scan directly with barcode scanner gun',
 }) => {
   const [scannerError, setScannerError] = useState<string | null>(null);
   const [isInitializing, setIsInitializing] = useState(true);
@@ -87,6 +88,12 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
     },
     [mode, onScan, onClose, stopScanner]
   );
+
+  // Hardware USB/Bluetooth Barcode Scanner Gun listener
+  useBarcodeScanner({
+    onScan: handleScanSuccess,
+    enabled: isOpen,
+  });
 
   const startScanner = useCallback(async () => {
     setIsInitializing(true);
@@ -278,6 +285,9 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
               <div className="absolute inset-0 bg-slate-950 p-4 flex flex-col items-center justify-center text-center text-rose-300 gap-2">
                 <AlertCircle className="w-8 h-8 text-rose-400" />
                 <p className="text-xs font-semibold leading-relaxed">{scannerError}</p>
+                <p className="text-[11px] text-amber-300 font-semibold mt-1">
+                  You can still scan directly with your barcode scanner gun!
+                </p>
                 <button
                   type="button"
                   onClick={startScanner}
@@ -319,6 +329,8 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
             </label>
             <div className="flex gap-2">
               <input
+                id="barcode-manual-input"
+                data-barcode-field="true"
                 type="text"
                 value={manualCode}
                 onChange={(e) => setManualCode(e.target.value)}

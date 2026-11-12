@@ -34,10 +34,11 @@ assert(hookContent.includes('maxInterKeyTimeoutMs'), 'Must handle inter-key keys
 assert(hookContent.includes('minBarcodeLength'), 'Must enforce minimum barcode length');
 assert(hookContent.includes("e.key === 'Enter'"), 'Must detect Enter key delimiter from scanner guns');
 assert(hookContent.includes('keydown'), 'Must attach keydown event listener');
-console.log('  ✓ Hardware USB/Bluetooth scanner gun hook verified.\n');
+assert(hookContent.includes('preventInputPollution'), 'Must support preventInputPollution to protect text inputs');
+console.log('  ✓ Hardware USB/Bluetooth scanner gun hook with input cleanup verified.\n');
 
 // 3. Verify BarcodeScannerModal component
-console.log('TEST 3: Verifying BarcodeScannerModal (mobile camera viewfinder)...');
+console.log('TEST 3: Verifying BarcodeScannerModal (mobile camera viewfinder + scanner gun support)...');
 const modalPath = path.join(rootDir, 'src', 'components', 'common', 'BarcodeScannerModal.tsx');
 assert(fs.existsSync(modalPath), 'BarcodeScannerModal.tsx must exist');
 const modalContent = fs.readFileSync(modalPath, 'utf8');
@@ -49,7 +50,8 @@ assert(modalContent.includes("facingMode: 'environment'"), 'Must use back / envi
 assert(modalContent.includes("mode === 'continuous'"), 'Must support continuous mode for POS checkout');
 assert(modalContent.includes("mode === 'single'"), 'Must support single item scan for inventory creation');
 assert(modalContent.includes('handleManualSubmit'), 'Must have manual barcode / keyboard fallback');
-console.log('  ✓ Mobile camera scanner modal verified.\n');
+assert(modalContent.includes('useBarcodeScanner'), 'BarcodeScannerModal must also listen to hardware scanner guns');
+console.log('  ✓ Mobile camera & hardware scanner gun modal verified.\n');
 
 // 4. Verify productSearchService has searchProductByBarcodeOrSku
 console.log('TEST 4: Verifying searchProductByBarcodeOrSku in productSearchService...');
@@ -67,11 +69,14 @@ const productFormPath = path.join(rootDir, 'src', 'components', 'inventory', 'Pr
 assert(fs.existsSync(productFormPath), 'ProductFormModal.tsx must exist');
 const productFormContent = fs.readFileSync(productFormPath, 'utf8');
 assert(productFormContent.includes('const [barcode, setBarcode] = useState'), 'Must have barcode state');
+assert(productFormContent.includes('initialBarcode'), 'Must accept initialBarcode prop');
+assert(productFormContent.includes('useBarcodeScanner'), 'Must integrate useBarcodeScanner directly in ProductFormModal');
+assert(productFormContent.includes('handleFormKeyDown'), 'Must prevent accidental Enter key premature form submission');
 assert(productFormContent.includes('isBarcodeModalOpen'), 'Must have barcode scanner modal open state');
 assert(productFormContent.includes('barcode: barcode.trim() || undefined'), 'Must include barcode in CreateProductInput payload');
 assert(productFormContent.includes('<BarcodeScannerModal'), 'Must render BarcodeScannerModal');
 assert(productFormContent.includes('mode="single"'), 'Must open BarcodeScannerModal in single scan mode');
-console.log('  ✓ ProductFormModal inventory barcode scanning verified.\n');
+console.log('  ✓ ProductFormModal inventory barcode scanning with gun verified.\n');
 
 // 6. Verify POS page integration
 console.log('TEST 6: Verifying POS page camera & hardware gun barcode checkout integration...');
@@ -81,6 +86,8 @@ const posContent = fs.readFileSync(posPath, 'utf8');
 assert(posContent.includes('searchProductByBarcodeOrSku'), 'POS must import searchProductByBarcodeOrSku');
 assert(posContent.includes('useBarcodeScanner'), 'POS must use useBarcodeScanner hook');
 assert(posContent.includes('handleBarcodeScanned'), 'POS must have handleBarcodeScanned callback');
+assert(posContent.includes('pendingNewBarcode'), 'POS must track pendingNewBarcode for unregistered scans');
+assert(posContent.includes('initialBarcode={pendingNewBarcode}'), 'POS must pass pending barcode to ProductFormModal');
 assert(posContent.includes('addProduct(product, 1)'), 'POS must automatically add scanned product to cart with quantity 1');
 assert(posContent.includes('playScannerBeep()'), 'POS must sound audio beep on successful scan');
 assert(posContent.includes('playScannerErrorTone()'), 'POS must sound warning tone on scan error or not found');
@@ -89,8 +96,19 @@ assert(posContent.includes('Scan Barcode'), 'POS must have visible Scan Barcode 
 assert(posContent.includes('mode="continuous"'), 'POS must open BarcodeScannerModal in continuous mode');
 console.log('  ✓ POS page camera & hardware gun scanner integration verified.\n');
 
-// 7. Simulated In-Memory Search Logic Verification
-console.log('TEST 7: Simulating barcode lookup with mock Firestore engine...');
+// 7. Verify Inventory page scanner integration
+console.log('TEST 7: Verifying Inventory page hardware gun scanner integration...');
+const inventoryPath = path.join(rootDir, 'src', 'pages', 'Inventory.tsx');
+assert(fs.existsSync(inventoryPath), 'Inventory.tsx must exist');
+const inventoryContent = fs.readFileSync(inventoryPath, 'utf8');
+assert(inventoryContent.includes('useBarcodeScanner'), 'Inventory must use useBarcodeScanner hook');
+assert(inventoryContent.includes('handleInventoryBarcodeScan'), 'Inventory must handle barcode scans');
+assert(inventoryContent.includes('scannedBarcodeForAdd'), 'Inventory must track scannedBarcodeForAdd');
+assert(inventoryContent.includes('initialBarcode={scannedBarcodeForAdd}'), 'Inventory must pass scannedBarcodeForAdd to ProductFormModal');
+console.log('  ✓ Inventory page barcode gun scanning integration verified.\n');
+
+// 8. Simulated In-Memory Search Logic Verification
+console.log('TEST 8: Simulating barcode lookup with mock Firestore engine...');
 const mockDatabase = [
   {
     id: 'prod-001',
@@ -152,6 +170,5 @@ assert.strictEqual(resD, null, 'Unregistered barcode should return null');
 console.log('  ✓ Mock barcode search simulations passed cleanly.\n');
 
 console.log('================================================================');
-console.log('ALL BARCODE SYSTEM VERIFICATION CHECKS PASSED SUCCESSFULLY (7/7)');
+console.log('ALL BARCODE SYSTEM VERIFICATION CHECKS PASSED SUCCESSFULLY (8/8)');
 console.log('================================================================');
-

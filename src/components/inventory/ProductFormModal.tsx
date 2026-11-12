@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { Sparkles, Building2, Layers, Plus, FileSpreadsheet, ScanBarcode, Camera } from 'lucide-react';
+import { Sparkles, Building2, Layers, Plus, FileSpreadsheet, ScanBarcode, Camera, CheckCircle2 } from 'lucide-react';
 import { Modal } from '../common/Modal';
 import { Input } from '../common/Input';
 import { Select } from '../common/Select';
 import { Button } from '../common/Button';
 import { BarcodeScannerModal } from '../common/BarcodeScannerModal';
+import { useBarcodeScanner } from '../../hooks/useBarcodeScanner';
+import { playScannerBeep } from '../../utils/soundEffects';
 import type {
   ProductDocument,
   ItemClassification,
@@ -28,6 +30,7 @@ export interface ProductFormModalProps {
   initialData?: ProductDocument | null;
   categories: CategoryDocument[];
   isLoading?: boolean;
+  initialBarcode?: string;
 }
 
 export const ProductFormModal: React.FC<ProductFormModalProps> = ({
@@ -37,10 +40,12 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
   initialData,
   categories,
   isLoading = false,
+  initialBarcode,
 }) => {
   const [title, setTitle] = useState('');
   const [sku, setSku] = useState('');
   const [barcode, setBarcode] = useState('');
+  const [barcodeFeedback, setBarcodeFeedback] = useState<string | null>(null);
   const [isBarcodeModalOpen, setIsBarcodeModalOpen] = useState(false);
   const [classification, setClassification] = useState<ItemClassification>('book');
   const [categoryId, setCategoryId] = useState('');
@@ -162,7 +167,7 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
       // Default new product values
       setTitle('');
       setSku('');
-      setBarcode('');
+      setBarcode(initialBarcode ? initialBarcode.trim() : '');
       setClassification('book');
       setCategoryId(categories.length > 0 ? categories[0].id : 'cat_primary');
       setSelectedPublisherId('');
@@ -191,7 +196,30 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
     setFormError(null);
     setIsQuickAddingPub(false);
     setIsQuickAddingSeries(false);
-  }, [initialData, categories, isOpen]);
+  }, [initialData, categories, isOpen, initialBarcode]);
+
+  // Hardware USB/Bluetooth Barcode Scanner Gun listener for Product Form Modal
+  useBarcodeScanner({
+    onScan: (scannedCode) => {
+      const clean = scannedCode.trim();
+      if (!clean) return;
+      setBarcode(clean);
+      playScannerBeep();
+      setBarcodeFeedback(`✓ Barcode Scanned with Gun: ${clean}`);
+      setTimeout(() => setBarcodeFeedback(null), 4000);
+    },
+    enabled: isOpen && !isBarcodeModalOpen && !isLoading,
+  });
+
+  const handleFormKeyDown = (e: React.KeyboardEvent<HTMLFormElement>) => {
+    if (e.key === 'Enter') {
+      const target = e.target as HTMLElement;
+      // Prevent Enter in input fields from prematurely submitting the incomplete form
+      if (target && target.tagName === 'INPUT' && target.getAttribute('type') !== 'submit') {
+        e.preventDefault();
+      }
+    }
+  };
 
   // Cascading Dropdown Handler: Publisher Change
   const handlePublisherChange = async (pubId: string) => {
@@ -428,7 +456,7 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
         </div>
       }
     >
-      <form id="product-form" onSubmit={handleSubmit} className="space-y-4">
+      <form id="product-form" onSubmit={handleSubmit} onKeyDown={handleFormKeyDown} className="space-y-4">
         {formError && (
           <div className="p-3 bg-rose-50 border border-rose-200 rounded-lg text-rose-700 text-xs">
             {formError}
@@ -527,10 +555,15 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
             </div>
             <div className="relative">
               <Input
+                id="product-barcode-input"
+                data-barcode-field="true"
                 placeholder="Scan or enter barcode (e.g. 9789691234567)"
                 value={barcode}
-                onChange={(e) => setBarcode(e.target.value)}
-                helperText="Type, scan with gun, or use camera"
+                onChange={(e) => {
+                  setBarcode(e.target.value);
+                  if (barcodeFeedback) setBarcodeFeedback(null);
+                }}
+                helperText={barcodeFeedback ? undefined : "Scan with gun directly, type, or use camera"}
               />
               <button
                 type="button"
@@ -541,6 +574,12 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
                 <Camera className="w-4 h-4" />
               </button>
             </div>
+            {barcodeFeedback && (
+              <p className="mt-1 text-xs text-emerald-700 font-bold flex items-center gap-1.5 animate-pulse">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                {barcodeFeedback}
+              </p>
+            )}
           </div>
         </div>
 
@@ -991,18 +1030,21 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
         </div>
       </form>
 
-      {/* Camera Barcode Scanner Modal */}
+      {/* Camera & Gun Barcode Scanner Modal */}
       {isBarcodeModalOpen && (
         <BarcodeScannerModal
           isOpen={isBarcodeModalOpen}
           onClose={() => setIsBarcodeModalOpen(false)}
           onScan={(scannedCode) => {
-            setBarcode(scannedCode);
+            const clean = scannedCode.trim();
+            setBarcode(clean);
+            setBarcodeFeedback(`✓ Scanned: ${clean}`);
+            setTimeout(() => setBarcodeFeedback(null), 4000);
             setIsBarcodeModalOpen(false);
           }}
           mode="single"
           title="Scan Product Barcode"
-          instructions="Point mobile camera at the book's printed barcode (EAN-13, ISBN, etc.)"
+          instructions="Point mobile camera at book barcode OR scan directly using barcode scanner gun"
         />
       )}
     </Modal>

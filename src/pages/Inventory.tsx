@@ -18,6 +18,9 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
+import { useBarcodeScanner } from '../hooks/useBarcodeScanner';
+import { playScannerBeep } from '../utils/soundEffects';
+import { searchProductByBarcodeOrSku } from '../services/productSearchService';
 import { Button } from '../components/common/Button';
 import { Badge } from '../components/common/Badge';
 import { Table, type Column } from '../components/common/Table';
@@ -108,6 +111,36 @@ export const Inventory: React.FC = () => {
   const [publishersList, setPublishersList] = useState<PublisherDocument[]>([]);
   const [seriesList, setSeriesList] = useState<SeriesDocument[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [scannedBarcodeForAdd, setScannedBarcodeForAdd] = useState<string>('');
+
+  const handleInventoryBarcodeScan = useCallback(
+    async (scannedCode: string) => {
+      const clean = scannedCode.trim();
+      if (!clean) return;
+      try {
+        const found = await searchProductByBarcodeOrSku(clean);
+        if (found) {
+          playScannerBeep();
+          setProductFilters((prev) => ({ ...prev, searchTerm: found.title }));
+          success(`Product found: "${found.title}"`);
+        } else {
+          playScannerBeep();
+          setScannedBarcodeForAdd(clean);
+          setEditingProduct(null);
+          setIsAddProductModalOpen(true);
+          success(`Barcode "${clean}" scanned! Opening form to register product.`);
+        }
+      } catch (err) {
+        console.warn('Inventory barcode scan error:', err);
+      }
+    },
+    [success]
+  );
+
+  useBarcodeScanner({
+    onScan: handleInventoryBarcodeScan,
+    enabled: activeTab === 'products' && !isAddProductModalOpen && !viewingProduct && !editingProduct,
+  });
 
   const loadSummary = useCallback(async () => {
     try {
@@ -1308,9 +1341,11 @@ export const Inventory: React.FC = () => {
         onClose={() => {
           setIsAddProductModalOpen(false);
           setEditingProduct(null);
+          setScannedBarcodeForAdd('');
         }}
         onSubmit={handleProductSubmit}
         initialData={editingProduct}
+        initialBarcode={scannedBarcodeForAdd}
         categories={categories}
         isLoading={isSubmitting}
       />
