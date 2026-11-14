@@ -265,6 +265,26 @@ export const updateProductPrice = async (
   };
 
   batch.update(prodRef, updatedDocData);
+
+  // Synchronize opening stock batch cost basis
+  try {
+    const openingBatchRef = doc(db, 'stockBatches', `BATCH_OPEN_${productId}`);
+    const openingBatchSnap = await getDoc(openingBatchRef);
+    if (openingBatchSnap.exists()) {
+      const obData = openingBatchSnap.data();
+      const remainingQty = Number(obData.remainingQuantity) || 0;
+      batch.update(openingBatchRef, {
+        unitCost: costPrice,
+        mrp: mrp,
+        publisherDiscountPercent: pubDiscount,
+        totalCost: Math.round(remainingQty * costPrice * 100) / 100,
+        updatedAt: now,
+      });
+    }
+  } catch (batchErr) {
+    console.warn('Could not sync opening stock batch for product:', productId, batchErr);
+  }
+
   await batch.commit();
 
   // Update store inventory summary asset valuation delta
@@ -348,6 +368,19 @@ export const batchUpdateSeriesDiscount = async (
       costPrice: newCostPrice,
       updatedAt: now,
     });
+
+    const obRef = doc(db, 'stockBatches', `BATCH_OPEN_${prod.id}`);
+    batch.set(
+      obRef,
+      {
+        publisherDiscountPercent: discount,
+        unitCost: newCostPrice,
+        mrp: mrp,
+        totalCost: Math.round(currentStock * newCostPrice * 100) / 100,
+        updatedAt: now,
+      },
+      { merge: true }
+    );
     updatedCount++;
   }
 

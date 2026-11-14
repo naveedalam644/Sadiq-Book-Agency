@@ -16,6 +16,7 @@ import {
   matchesPublisherHierarchy,
   matchesSeriesHierarchy,
   matchesClassHierarchy,
+  sortProductsByClassSequence,
 } from '../utils/purchaseFormHelpers';
 
 export interface ProductSearchResult extends ProductDocument {
@@ -245,8 +246,10 @@ export const searchProductsByName = async (
     };
   });
 
+  const sortedProducts = sortProductsByClassSequence(products);
+
   const response: ProductSearchResponse = {
-    products,
+    products: sortedProducts,
     hasMore,
     nextCursor,
     queryTerm: normalized,
@@ -330,6 +333,9 @@ export const getProductsByHierarchy = async (
   if (hasClass) {
     products = products.filter((p) => matchesClassHierarchy(p, targetClass));
   }
+
+  // Sort by academic class sequence (Playgroup -> Nursery -> Prep/KG -> Class 1 -> 10)
+  products = sortProductsByClassSequence(products);
 
   return {
     products,

@@ -56,6 +56,7 @@ import {
 } from '../services/stockService';
 import { getInventorySummary } from '../services/summaryService';
 import { formatCurrency, formatNumber } from '../utils/formatters';
+import { sortProductsByClassSequence } from '../utils/purchaseFormHelpers';
 
 export const Inventory: React.FC = () => {
   const { currentUser } = useAuth();
@@ -202,7 +203,7 @@ export const Inventory: React.FC = () => {
       setProductsLoading(true);
       try {
         const res = await getProductsPaginated(filtersToUse, cursor);
-        setProducts(res.products);
+        setProducts(sortProductsByClassSequence(res.products));
         setHasMoreProducts(res.hasMore);
         setProductCursor(res.lastDoc);
 
@@ -367,13 +368,13 @@ export const Inventory: React.FC = () => {
   const productColumns: Column<ProductDocument>[] = [
     {
       key: 'title',
-      header: 'Product / Item Title',
+      header: 'Product / Item Title (PG → 10th)',
       render: (row) => (
         <div className="max-w-xs">
           <div className="font-bold text-slate-900 truncate hover:text-[#071F49] cursor-pointer flex items-center gap-1.5" onClick={() => setViewingProduct(row)}>
             <span className="truncate">{row.title}</span>
             {(row.targetClass || row.className) && (
-              <span className="shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-50 text-[#071F49] border border-blue-200">
+              <span className="shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-50 text-[#071F49] border border-blue-200" title="Academic Class Sequence">
                 {row.targetClass || row.className}
               </span>
             )}

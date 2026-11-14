@@ -16,6 +16,67 @@ import type {
   ProductDocument,
   PurchaseDocument,
 } from '../types/database';
+import {
+  getClassSortRank,
+  compareProductsByClassSequence,
+} from '../utils/purchaseFormHelpers';
+
+export interface PublisherProductDetailMetrics {
+  productId: string;
+  productTitle: string;
+  sku: string;
+  seriesId?: string;
+  seriesName?: string;
+  targetClass?: string;
+  className?: string;
+  classRank: number;
+  // Current Shop Stock on Hand ("hamare pas kitna para hai")
+  stockOnHand: number;
+  stockCostValue: number;
+  stockRetailValue: number;
+  costPrice: number;
+  retailPrice: number;
+  // Purchases Inflow in Period
+  purchasedQty: number;
+  purchasedAmount: number;
+  // Sales Performance in Period ("kitan sold howa hai")
+  soldQty: number;
+  returnedQty: number;
+  quantity: number; // Net Sold Units (backward compatible alias)
+  grossSales: number;
+  returnAmount: number;
+  netAmount: number; // Net Sales PKR (backward compatible alias)
+  // Financial Hisab (COGS, Profit, Margin)
+  costOfGoodsSold: number;
+  grossProfit: number;
+  grossMarginPercent: number;
+}
+
+export interface PublisherSeriesMetrics {
+  seriesId?: string;
+  seriesName: string;
+  totalProductsCount: number;
+  // Current Shop Stock on Hand ("ye series ka mal hamare pas kitna para hai")
+  stockQuantity: number;
+  stockCostValue: number;
+  stockRetailValue: number;
+  // Purchases Inflow in Period
+  purchasedQuantity: number;
+  totalPurchasedAmount: number;
+  // Sales Performance in Period ("kitan sold howa hai")
+  salesQuantity: number;
+  returnedQuantity: number;
+  netSalesQuantity: number;
+  grossSalesAmount: number;
+  returnAmount: number;
+  netSales: number;
+  // Financial Hisab (COGS, Profit, Margin)
+  costOfGoodsSold: number;
+  grossProfit: number;
+  grossMarginPercent: number;
+  // Itemized Single Products under this series (sorted in class sequence PG -> 10th)
+  products: PublisherProductDetailMetrics[];
+}
 
 export interface PublisherPeriodMetrics {
   publisherName: string;
@@ -35,18 +96,10 @@ export interface PublisherPeriodMetrics {
   costOfGoodsSold: number;
   grossProfit: number;
   grossMarginPercent: number;
-  // Product Breakdown
-  topProducts: {
-    productId: string;
-    productTitle: string;
-    sku: string;
-    stockOnHand: number;
-    stockCostValue: number;
-    purchasedQty: number;
-    purchasedAmount: number;
-    quantity: number; // Net Sold
-    netAmount: number; // Net Sales
-  }[];
+  // Series Breakdown ("publisher ke sat series ka be pata ho... pora hisab ho")
+  seriesBreakdown: PublisherSeriesMetrics[];
+  // Flat Top Products (backward compatible)
+  topProducts: PublisherProductDetailMetrics[];
 }
 
 export interface PublisherAnalyticsReport {
@@ -171,14 +224,27 @@ export const getPublisherAnalyticsReport = async (
 
   // Publisher Aggregation Buckets
   interface ProductAgg {
+    productId: string;
     title: string;
     sku: string;
+    seriesId?: string;
+    seriesName: string;
+    targetClass?: string;
+    className?: string;
+    classRank: number;
+    costPrice: number;
+    retailPrice: number;
     stockOnHand: number;
     stockCostValue: number;
+    stockRetailValue: number;
     purchasedQty: number;
     purchasedAmount: number;
-    qty: number;
-    netAmount: number;
+    soldQty: number;
+    returnedQty: number;
+    grossSales: number;
+    returnAmount: number;
+    grossCogs: number;
+    returnedCogs: number;
   }
 
   interface AggBucket {
@@ -221,7 +287,8 @@ export const getPublisherAnalyticsReport = async (
     return buckets.get(norm)!;
   };
 
-  // Map product IDs to their authoritative publisher name
+  // Map product IDs to their authoritative ProductDocument & publisher name
+  const productIdToProduct = new Map<string, ProductDocument>();
   const productIdToPublisher = new Map<string, string>();
 
   // 1. Fetch all products to calculate Current Shop Stock on Hand & Value per publisher
@@ -229,6 +296,7 @@ export const getPublisherAnalyticsReport = async (
     const productsSnap = await getDocs(collection(db, 'products'));
     for (const docSnap of productsSnap.docs) {
       const prod = docSnap.data() as ProductDocument;
+      productIdToProduct.set(docSnap.id, prod);
       const pubName = normalizePublisherName(prod.publisherName);
       productIdToPublisher.set(docSnap.id, pubName);
 
@@ -242,21 +310,36 @@ export const getPublisherAnalyticsReport = async (
       b.currentStockRetailValue += stock * retail;
 
       const pId = docSnap.id;
+      const sName = (prod.seriesName || '').trim() || 'General / Standalone Books';
       if (!b.productsMap.has(pId)) {
         b.productsMap.set(pId, {
+          productId: pId,
           title: prod.title,
           sku: prod.sku,
+          seriesId: prod.seriesId,
+          seriesName: sName,
+          targetClass: prod.targetClass,
+          className: prod.className,
+          classRank: getClassSortRank(prod),
+          costPrice: cost,
+          retailPrice: retail,
           stockOnHand: stock,
           stockCostValue: stock * cost,
+          stockRetailValue: stock * retail,
           purchasedQty: 0,
           purchasedAmount: 0,
-          qty: 0,
-          netAmount: 0,
+          soldQty: 0,
+          returnedQty: 0,
+          grossSales: 0,
+          returnAmount: 0,
+          grossCogs: 0,
+          returnedCogs: 0,
         });
       } else {
         const pEntry = b.productsMap.get(pId)!;
         pEntry.stockOnHand += stock;
         pEntry.stockCostValue += stock * cost;
+        pEntry.stockRetailValue += stock * retail;
       }
     }
   } catch (err) {
@@ -275,9 +358,13 @@ export const getPublisherAnalyticsReport = async (
     for (const docSnap of purchasesSnap.docs) {
       const purchase = docSnap.data() as PurchaseDocument;
       for (const item of purchase.items || []) {
+        const prod = item.productId ? productIdToProduct.get(item.productId) : undefined;
         let pubName = (item as any).publisherName;
         if (!pubName && item.productId) {
           pubName = productIdToPublisher.get(item.productId);
+        }
+        if (!pubName && prod) {
+          pubName = prod.publisherName;
         }
         const b = getBucket(pubName);
         const itemQty = Number(item.quantity) || 0;
@@ -287,16 +374,31 @@ export const getPublisherAnalyticsReport = async (
         b.totalPurchasedAmount += itemCost;
 
         const pId = item.productId || item.productName;
+        const itemAny = item as any;
+        const sName = (itemAny.seriesName || prod?.seriesName || '').trim() || 'General / Standalone Books';
         if (!b.productsMap.has(pId)) {
           b.productsMap.set(pId, {
+            productId: pId,
             title: item.productName,
-            sku: (item as any).sku || '',
+            sku: itemAny.sku || prod?.sku || '',
+            seriesId: itemAny.seriesId || prod?.seriesId,
+            seriesName: sName,
+            targetClass: itemAny.targetClass || prod?.targetClass,
+            className: prod?.className,
+            classRank: getClassSortRank({ targetClass: itemAny.targetClass || prod?.targetClass, title: item.productName }),
+            costPrice: Number(item.unitCost) || prod?.costPrice || 0,
+            retailPrice: Number((item as any).mrp) || prod?.retailPrice || 0,
             stockOnHand: 0,
             stockCostValue: 0,
+            stockRetailValue: 0,
             purchasedQty: itemQty,
             purchasedAmount: itemCost,
-            qty: 0,
-            netAmount: 0,
+            soldQty: 0,
+            returnedQty: 0,
+            grossSales: 0,
+            returnAmount: 0,
+            grossCogs: 0,
+            returnedCogs: 0,
           });
         } else {
           const pEntry = b.productsMap.get(pId)!;
@@ -330,33 +432,53 @@ export const getPublisherAnalyticsReport = async (
     for (const doc of salesSnap.docs) {
       const sale = doc.data() as SaleDocument;
       for (const item of sale.items) {
+        const prod = item.productId ? productIdToProduct.get(item.productId) : undefined;
         let pubName = item.publisherName;
         if (!pubName && item.productId) {
           pubName = productIdToPublisher.get(item.productId);
         }
+        if (!pubName && prod) {
+          pubName = prod.publisherName;
+        }
         const b = getBucket(pubName);
         b.salesQty += item.quantity;
         b.grossSales += item.lineTotal;
-        const unitCost = Number((item as any).costPrice) || 0;
+        const unitCost = Number((item as any).costPrice) || prod?.costPrice || 0;
         b.grossCogs += unitCost * item.quantity;
 
         // Product breakdown
         const pId = item.productId;
+        const sName = (item.seriesName || prod?.seriesName || '').trim() || 'General / Standalone Books';
         if (!b.productsMap.has(pId)) {
           b.productsMap.set(pId, {
+            productId: pId,
             title: item.productName,
             sku: item.sku,
+            seriesId: prod?.seriesId,
+            seriesName: sName,
+            targetClass: item.targetClass || prod?.targetClass,
+            className: prod?.className,
+            classRank: getClassSortRank({ targetClass: item.targetClass || prod?.targetClass, title: item.productName }),
+            costPrice: unitCost,
+            retailPrice: item.unitPrice || prod?.retailPrice || 0,
             stockOnHand: 0,
             stockCostValue: 0,
+            stockRetailValue: 0,
             purchasedQty: 0,
             purchasedAmount: 0,
-            qty: 0,
-            netAmount: 0,
+            soldQty: item.quantity,
+            returnedQty: 0,
+            grossSales: item.lineTotal,
+            returnAmount: 0,
+            grossCogs: unitCost * item.quantity,
+            returnedCogs: 0,
           });
+        } else {
+          const prodEntry = b.productsMap.get(pId)!;
+          prodEntry.soldQty += item.quantity;
+          prodEntry.grossSales += item.lineTotal;
+          prodEntry.grossCogs += unitCost * item.quantity;
         }
-        const prodEntry = b.productsMap.get(pId)!;
-        prodEntry.qty += item.quantity;
-        prodEntry.netAmount += item.lineTotal;
       }
     }
 
@@ -388,22 +510,27 @@ export const getPublisherAnalyticsReport = async (
     for (const doc of returnsSnap.docs) {
       const ret = doc.data() as SaleReturnDocument;
       for (const item of ret.items) {
+        const prod = item.productId ? productIdToProduct.get(item.productId) : undefined;
         let pubName = item.publisherName;
         if (!pubName && item.productId) {
           pubName = productIdToPublisher.get(item.productId);
         }
+        if (!pubName && prod) {
+          pubName = prod.publisherName;
+        }
         const b = getBucket(pubName);
         b.returnedQty += item.quantity;
         b.returnAmount += item.refundLineTotal;
-        const unitCost = Number(item.originalCostPrice) || 0;
+        const unitCost = Number(item.originalCostPrice) || prod?.costPrice || 0;
         b.returnedCogs += unitCost * item.quantity;
 
         // Deduct from product breakdown
         const pId = item.productId;
         if (b.productsMap.has(pId)) {
           const prodEntry = b.productsMap.get(pId)!;
-          prodEntry.qty -= item.quantity;
-          prodEntry.netAmount -= item.refundLineTotal;
+          prodEntry.returnedQty += item.quantity;
+          prodEntry.returnAmount += item.refundLineTotal;
+          prodEntry.returnedCogs += unitCost * item.quantity;
         }
       }
     }
@@ -446,22 +573,120 @@ export const getPublisherAnalyticsReport = async (
     const grossProfit = Math.round((netSales - netCogs) * 100) / 100;
     const margin = netSales > 0 ? Math.round((grossProfit / netSales) * 1000) / 10 : 0;
 
-    const topProducts = Array.from(b.productsMap.entries())
-      .map(([id, val]) => ({
-        productId: id,
-        productTitle: val.title,
-        sku: val.sku,
-        stockOnHand: val.stockOnHand,
-        stockCostValue: Math.round(val.stockCostValue * 100) / 100,
-        purchasedQty: val.purchasedQty,
-        purchasedAmount: Math.round(val.purchasedAmount * 100) / 100,
-        quantity: val.qty,
-        netAmount: Math.round(val.netAmount * 100) / 100,
-      }))
-      .sort((p1, p2) => {
-        if (p2.netAmount !== p1.netAmount) return p2.netAmount - p1.netAmount;
-        return p2.stockOnHand - p1.stockOnHand;
+    // Calculate Individual Product Metrics
+    const productMetricsList: PublisherProductDetailMetrics[] = Array.from(b.productsMap.values()).map((p) => {
+      const netSold = p.soldQty - p.returnedQty;
+      const prodNetSales = Math.round((p.grossSales - p.returnAmount) * 100) / 100;
+      const prodNetCogs = Math.round((p.grossCogs - p.returnedCogs) * 100) / 100;
+      const prodProfit = Math.round((prodNetSales - prodNetCogs) * 100) / 100;
+      const prodMargin = prodNetSales > 0 ? Math.round((prodProfit / prodNetSales) * 1000) / 10 : 0;
+
+      return {
+        productId: p.productId,
+        productTitle: p.title,
+        sku: p.sku,
+        seriesId: p.seriesId,
+        seriesName: p.seriesName,
+        targetClass: p.targetClass,
+        className: p.className,
+        classRank: p.classRank || getClassSortRank({ targetClass: p.targetClass, className: p.className, title: p.title }),
+        costPrice: p.costPrice,
+        retailPrice: p.retailPrice,
+        stockOnHand: p.stockOnHand,
+        stockCostValue: Math.round(p.stockCostValue * 100) / 100,
+        stockRetailValue: Math.round(p.stockRetailValue * 100) / 100,
+        purchasedQty: p.purchasedQty,
+        purchasedAmount: Math.round(p.purchasedAmount * 100) / 100,
+        soldQty: p.soldQty,
+        returnedQty: p.returnedQty,
+        quantity: netSold, // Backward compatible
+        grossSales: Math.round(p.grossSales * 100) / 100,
+        returnAmount: Math.round(p.returnAmount * 100) / 100,
+        netAmount: prodNetSales, // Backward compatible
+        costOfGoodsSold: prodNetCogs,
+        grossProfit: prodProfit,
+        grossMarginPercent: prodMargin,
+      };
+    });
+
+    // Group Products by Series
+    const seriesMap = new Map<string, PublisherProductDetailMetrics[]>();
+    for (const prod of productMetricsList) {
+      const sName = prod.seriesName || 'General / Standalone Books';
+      if (!seriesMap.has(sName)) {
+        seriesMap.set(sName, []);
+      }
+      seriesMap.get(sName)!.push(prod);
+    }
+
+    const seriesBreakdown: PublisherSeriesMetrics[] = [];
+    for (const [serName, seriesProds] of seriesMap.entries()) {
+      // Sort single products strictly in natural academic class sequence!
+      seriesProds.sort(compareProductsByClassSequence);
+
+      let sStockQty = 0;
+      let sStockCostVal = 0;
+      let sStockRetailVal = 0;
+      let sPurchasedQty = 0;
+      let sPurchasedAmt = 0;
+      let sSoldQty = 0;
+      let sRetQty = 0;
+      let sGrossSales = 0;
+      let sRetAmt = 0;
+      let sCogs = 0;
+
+      for (const sp of seriesProds) {
+        sStockQty += sp.stockOnHand;
+        sStockCostVal += sp.stockCostValue;
+        sStockRetailVal += sp.stockRetailValue;
+        sPurchasedQty += sp.purchasedQty;
+        sPurchasedAmt += sp.purchasedAmount;
+        sSoldQty += sp.soldQty;
+        sRetQty += sp.returnedQty;
+        sGrossSales += sp.grossSales;
+        sRetAmt += sp.returnAmount;
+        sCogs += sp.costOfGoodsSold;
+      }
+
+      const sNetSold = sSoldQty - sRetQty;
+      const sNetSales = Math.round((sGrossSales - sRetAmt) * 100) / 100;
+      const sNetCogs = Math.round(sCogs * 100) / 100;
+      const sProfit = Math.round((sNetSales - sNetCogs) * 100) / 100;
+      const sMargin = sNetSales > 0 ? Math.round((sProfit / sNetSales) * 1000) / 10 : 0;
+
+      seriesBreakdown.push({
+        seriesId: seriesProds[0]?.seriesId,
+        seriesName: serName,
+        totalProductsCount: seriesProds.length,
+        stockQuantity: sStockQty,
+        stockCostValue: Math.round(sStockCostVal * 100) / 100,
+        stockRetailValue: Math.round(sStockRetailVal * 100) / 100,
+        purchasedQuantity: sPurchasedQty,
+        totalPurchasedAmount: Math.round(sPurchasedAmt * 100) / 100,
+        salesQuantity: sSoldQty,
+        returnedQuantity: sRetQty,
+        netSalesQuantity: sNetSold,
+        grossSalesAmount: Math.round(sGrossSales * 100) / 100,
+        returnAmount: Math.round(sRetAmt * 100) / 100,
+        netSales: sNetSales,
+        costOfGoodsSold: sNetCogs,
+        grossProfit: sProfit,
+        grossMarginPercent: sMargin,
+        products: seriesProds,
       });
+    }
+
+    // Sort series: primarily by net sales descending, then stock cost value descending
+    seriesBreakdown.sort((s1, s2) => {
+      if (s2.netSales !== s1.netSales) return s2.netSales - s1.netSales;
+      return s2.stockCostValue - s1.stockCostValue;
+    });
+
+    // Top products: sorted primarily by net sales descending, then stock on hand descending
+    const topProducts = [...productMetricsList].sort((p1, p2) => {
+      if (p2.netAmount !== p1.netAmount) return p2.netAmount - p1.netAmount;
+      return p2.stockOnHand - p1.stockOnHand;
+    });
 
     publisherList.push({
       publisherName: b.publisherName,
@@ -478,6 +703,7 @@ export const getPublisherAnalyticsReport = async (
       costOfGoodsSold: netCogs,
       grossProfit,
       grossMarginPercent: margin,
+      seriesBreakdown,
       topProducts,
     });
 

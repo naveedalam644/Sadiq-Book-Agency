@@ -29,6 +29,7 @@ import {
   matchesSeriesHierarchy,
   matchesClassHierarchy,
   matchesSearchTokens,
+  sortProductsByClassSequence,
 } from '../utils/purchaseFormHelpers';
 
 export interface ProductFilters {
@@ -178,6 +179,9 @@ export const getProductsPaginated = async (
     if (filters.searchTerm && filters.searchTerm.trim()) {
       products = products.filter((p) => matchesSearchTokens(p, filters.searchTerm!));
     }
+
+    // Sort products by academic class sequence (Playgroup -> Nursery -> Prep/KG -> Class 1 -> 10)
+    products = sortProductsByClassSequence(products);
 
     const hasMore = hasSpecificFilter ? false : docs.length > pageSize;
     if (!hasSpecificFilter && hasMore) {
@@ -540,6 +544,25 @@ export const updateProduct = async (
   };
 
   batch.update(prodRef, updatedDocData);
+
+  // Synchronize opening stock batch cost basis if cost or publisher discount was modified
+  try {
+    const openingBatchRef = doc(db, 'stockBatches', `BATCH_OPEN_${id}`);
+    const openingBatchSnap = await getDoc(openingBatchRef);
+    if (openingBatchSnap.exists()) {
+      const obData = openingBatchSnap.data();
+      const remainingQty = Number(obData.remainingQuantity) || 0;
+      batch.update(openingBatchRef, {
+        unitCost: newCostPrice,
+        mrp: mrp,
+        publisherDiscountPercent: pubDiscount,
+        totalCost: Math.round(remainingQty * newCostPrice * 100) / 100,
+        updatedAt: now,
+      });
+    }
+  } catch (batchErr) {
+    console.warn('Could not sync opening stock batch for product:', id, batchErr);
+  }
 
   // If stock quantity was modified manually, log movement
   if (stockDiff !== 0) {

@@ -69,11 +69,12 @@ export const normalizeClassString = (val?: string): string => {
 
 /**
  * Extracts academic class number (1 through 12) from string.
+ * Strictly checks numbers 1 to 12 with word boundaries to avoid false positives (e.g. 100 pages).
  * e.g. "Class 9" -> 9, "9th" -> 9, "Class 10" -> 10, "10" -> 10
  */
 export const extractClassNumber = (val?: string): number | null => {
   if (!val) return null;
-  const match = val.match(/\b(?:class|grade|th)?\s*([0-9]{1,2})(?:st|nd|rd|th)?\b/i) || val.match(/([0-9]{1,2})/);
+  const match = val.match(/\b(?:class|grade)?\s*([1-9]|1[0-2])(?:st|nd|rd|th)?\b/i);
   return match ? parseInt(match[1], 10) : null;
 };
 
@@ -154,6 +155,156 @@ export const matchesClassHierarchy = (product: ProductDocument, targetClass?: st
   }
 
   return false;
+};
+
+/**
+ * Extracts class sequence sorting rank for a product or class title.
+ * Lower classes come first:
+ * 1: Play Group / Playgroup / PG / Pre-Nursery
+ * 2: Nursery / Nur
+ * 3: Prep / KG / Kindergarten / Prep-KG
+ * 10: Class 1 / 1st / One
+ * 20: Class 2 / 2nd / Two
+ * ...
+ * 100: Class 10 / 10th / Matric
+ * 110: Class 11 / 1st Year / Inter Part 1
+ * 120: Class 12 / 2nd Year / Inter Part 2
+ * 999: Non-class / General
+ */
+export const getClassSortRank = (item?: Partial<ProductDocument> | string | null): number => {
+  if (!item) return 999;
+
+  let targetClass = '';
+  let className = '';
+  let edition = '';
+  let title = '';
+
+  if (typeof item === 'string') {
+    title = item;
+  } else {
+    targetClass = (item.targetClass || '').trim();
+    className = (item.className || '').trim();
+    edition = (item.edition || '').trim();
+    title = (item.title || '').trim();
+  }
+
+  const rawCandidates = [targetClass, className, edition, title].filter(Boolean);
+  if (rawCandidates.length === 0) return 999;
+
+  const checkEarlyChildhood = (str: string): number | null => {
+    const s = str.toLowerCase();
+    // 1. Play Group / PG
+    if (
+      s.includes('playgroup') ||
+      s.includes('play group') ||
+      s.includes('playgrp') ||
+      /\bpg\b/i.test(s) ||
+      s.includes('pre-nursery')
+    ) {
+      return 1;
+    }
+    // 2. Nursery
+    if (s.includes('nursery') || /\bnur\b/i.test(s)) {
+      return 2;
+    }
+    // 3. Prep / KG
+    if (
+      s.includes('prep') ||
+      s.includes('kindergarten') ||
+      /\bkg\b/i.test(s) ||
+      /\bk\.g\b/i.test(s)
+    ) {
+      return 3;
+    }
+    return null;
+  };
+
+  // 1. Check explicit targetClass / className first
+  for (const c of [targetClass, className]) {
+    if (c) {
+      const early = checkEarlyChildhood(c);
+      if (early !== null) return early;
+      const num = extractClassNumber(c);
+      if (num !== null && num >= 1 && num <= 12) {
+        return num * 10;
+      }
+    }
+  }
+
+  // 2. Check title / edition for early childhood
+  for (const c of [edition, title]) {
+    if (c) {
+      const early = checkEarlyChildhood(c);
+      if (early !== null) return early;
+    }
+  }
+
+  // 3. Check title / edition for numerical class (1 to 12)
+  for (const c of [edition, title]) {
+    if (!c) continue;
+    const num = extractClassNumber(c);
+    if (num !== null && num >= 1 && num <= 12) {
+      return num * 10;
+    }
+
+    // Check English word numerals (e.g. "Urdu Book One", "Urdu Book Two")
+    const lower = c.toLowerCase();
+    if (/\b(?:class|grade|book|part)?\s*one\b/i.test(lower)) return 10;
+    if (/\b(?:class|grade|book|part)?\s*two\b/i.test(lower)) return 20;
+    if (/\b(?:class|grade|book|part)?\s*three\b/i.test(lower)) return 30;
+    if (/\b(?:class|grade|book|part)?\s*four\b/i.test(lower)) return 40;
+    if (/\b(?:class|grade|book|part)?\s*five\b/i.test(lower)) return 50;
+    if (/\b(?:class|grade|book|part)?\s*six\b/i.test(lower)) return 60;
+    if (/\b(?:class|grade|book|part)?\s*seven\b/i.test(lower)) return 70;
+    if (/\b(?:class|grade|book|part)?\s*eight\b/i.test(lower)) return 80;
+    if (/\b(?:class|grade|book|part)?\s*nine\b/i.test(lower)) return 90;
+    if (/\b(?:class|grade|book|part)?\s*ten\b/i.test(lower)) return 100;
+  }
+
+  return 999;
+};
+
+/**
+ * Compare two products by natural academic class sequence:
+ * Playgroup -> Nursery -> Prep / KG -> Class 1 -> Class 2 -> ... -> Class 10.
+ * Ties are broken by series name, then title, then SKU.
+ */
+export const compareProductsByClassSequence = (
+  a: Partial<ProductDocument>,
+  b: Partial<ProductDocument>
+): number => {
+  const rankA = getClassSortRank(a);
+  const rankB = getClassSortRank(b);
+
+  if (rankA !== rankB) {
+    return rankA - rankB;
+  }
+
+  // Secondary sort by seriesName if available
+  const seriesA = (a.seriesName || '').trim().toLowerCase();
+  const seriesB = (b.seriesName || '').trim().toLowerCase();
+  if (seriesA && seriesB && seriesA !== seriesB) {
+    return seriesA.localeCompare(seriesB);
+  }
+
+  // Tertiary sort by title
+  const titleA = (a.title || '').trim().toLowerCase();
+  const titleB = (b.title || '').trim().toLowerCase();
+  if (titleA !== titleB) {
+    return titleA.localeCompare(titleB);
+  }
+
+  // Quaternary sort by SKU
+  const skuA = (a.sku || '').trim().toLowerCase();
+  const skuB = (b.sku || '').trim().toLowerCase();
+  return skuA.localeCompare(skuB);
+};
+
+/**
+ * Immutably sorts an array of products by academic class sequence.
+ */
+export const sortProductsByClassSequence = <T extends Partial<ProductDocument>>(products: T[]): T[] => {
+  return [...products].sort(compareProductsByClassSequence);
 };
 
 /**

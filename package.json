@@ -53,6 +53,7 @@
     "test:pos_credit_partial": "node --experimental-strip-types tests/pos_credit_partial_cash_verification.ts",
     "test:parchon_sale": "node --experimental-strip-types tests/parchon_counter_sale_verification.ts",
     "test:thermal_format": "node --experimental-strip-types tests/thermal_format_7_columns_verification.ts",
+    "test:publisher_series_and_class": "node --experimental-strip-types tests/publisher_series_and_product_analytics_and_class_sequence_verification.ts",
     "test:syllabus_modal_filters": "node --experimental-strip-types tests/syllabus_add_book_modal_filters_verification.ts",
     "test:emulator": "node scripts/run_emulator_tests.js",
     "preview": "vite preview"
