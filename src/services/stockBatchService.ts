@@ -71,6 +71,74 @@ export const getActiveBatchesForProduct = async (
 };
 
 /**
+ * Query active stock batches for multiple products concurrently in chunks of 30.
+ * Eliminates N individual Firestore round-trips when checking out multi-item carts.
+ */
+export const getActiveBatchesForProducts = async (
+  productIds: string[]
+): Promise<Map<string, StockBatchDocument[]>> => {
+  const result = new Map<string, StockBatchDocument[]>();
+  const validIds = Array.from(new Set(productIds.filter(Boolean)));
+  validIds.forEach((pid) => result.set(pid, []));
+
+  if (!db || validIds.length === 0) return result;
+
+  try {
+    // Firestore 'in' query supports up to 30 elements
+    const chunks: string[][] = [];
+    for (let i = 0; i < validIds.length; i += 30) {
+      chunks.push(validIds.slice(i, i + 30));
+    }
+
+    const snaps = await Promise.all(
+      chunks.map((chunk) =>
+        getDocs(
+          query(
+            collection(db!, STOCK_BATCHES_COLLECTION),
+            where('productId', 'in', chunk)
+          )
+        )
+      )
+    );
+
+    for (const snap of snaps) {
+      snap.forEach((d) => {
+        const b = d.data() as StockBatchDocument;
+        if (b.remainingQuantity > 0 && result.has(b.productId)) {
+          result.get(b.productId)!.push(b);
+        }
+      });
+    }
+
+    // Stable FIFO ordering: opening batches must ALWAYS come first, then oldest purchase intake / creation
+    for (const [_, batches] of result.entries()) {
+      batches.sort((a, b) => {
+        if (a.batchType === 'opening' && b.batchType !== 'opening') return -1;
+        if (b.batchType === 'opening' && a.batchType !== 'opening') return 1;
+        const dateA = a.purchaseDate || a.createdAt;
+        const dateB = b.purchaseDate || b.createdAt;
+        const diff = new Date(dateA).getTime() - new Date(dateB).getTime();
+        if (diff !== 0) return diff;
+        return (a.createdAt || '').localeCompare(b.createdAt || '');
+      });
+    }
+
+    return result;
+  } catch (err) {
+    console.error('Error batch querying active stock batches:', err);
+    // Fallback: query individually if 'in' query fails for any reason
+    const fallbackMap = new Map<string, StockBatchDocument[]>();
+    await Promise.all(
+      validIds.map(async (pid) => {
+        const batches = await getActiveBatchesForProduct(pid);
+        fallbackMap.set(pid, batches);
+      })
+    );
+    return fallbackMap;
+  }
+};
+
+/**
  * Query all historical stock batches for a given product (for audit and product history).
  */
 export const getAllBatchesForProduct = async (

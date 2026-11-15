@@ -31,7 +31,7 @@ import { updateInventorySummaryDeltas } from './summaryService';
 import { calculateInvoiceDueDate } from './dueDateService';
 import { syncCustomerPortal } from './customerPortalService';
 import {
-  getActiveBatchesForProduct,
+  getActiveBatchesForProducts,
   depleteFifoBatchesInTransaction,
   getOpeningStockBatchId,
   STOCK_BATCHES_COLLECTION,
@@ -446,15 +446,26 @@ export const processSaleTransaction = async (
   const saleDateStr = input.saleDate || todayDateStr;
   const effectiveInvoiceDate = new Date(saleDateStr);
 
+  // Extract unique products upfront for concurrent pre-fetching
+  const uniqueProductIds = Array.from(new Set(input.items.map((item) => item.productId).filter(Boolean)));
+
   // Daily sequential invoice starting from 0001 (e.g. INV-20261105-0001)
   let invoiceNo = '';
   let activeSeqNum = 1;
+  let preloadedBatchesMap = new Map<string, StockBatchDocument[]>();
+
   try {
     const salesDateQuery = query(
       collection(db, 'sales'),
       where('saleDate', '==', saleDateStr)
     );
-    const dateSalesSnap = await getDocs(salesDateQuery);
+
+    // Concurrently pre-load date sales sequence AND product batches in parallel
+    const [dateSalesSnap, batchMap] = await Promise.all([
+      getDocs(salesDateQuery),
+      getActiveBatchesForProducts(uniqueProductIds),
+    ]);
+    preloadedBatchesMap = batchMap;
 
     // Idempotency check: Has this exact session already created an invoice?
     const existingSessionDoc = dateSalesSnap.docs.find(
@@ -489,19 +500,13 @@ export const processSaleTransaction = async (
   } catch (err) {
     console.warn('Failed to query daily sales sequence, falling back to deterministic session format:', err);
     invoiceNo = generateInvoiceNumber(cleanSessionId, effectiveTerminalId, effectiveInvoiceDate);
+    // Ensure batches are loaded if error occurred during parallel fetch
+    if (preloadedBatchesMap.size === 0) {
+      preloadedBatchesMap = await getActiveBatchesForProducts(uniqueProductIds);
+    }
   }
 
   let saleRef = doc(db, 'sales', invoiceNo);
-
-  // Pre-load active batches outside transaction in parallel for maximum counter speed
-  const preloadedBatchesMap = new Map<string, StockBatchDocument[]>();
-  const uniqueProductIds = Array.from(new Set(input.items.map((item) => item.productId).filter(Boolean)));
-  const batchResults = await Promise.all(
-    uniqueProductIds.map((pid) => getActiveBatchesForProduct(pid))
-  );
-  uniqueProductIds.forEach((pid, idx) => {
-    preloadedBatchesMap.set(pid, batchResults[idx]);
-  });
 
   let finalSaleDoc: SaleDocument | null = null;
   let isDuplicateReturn = false;
@@ -513,9 +518,47 @@ export const processSaleTransaction = async (
     try {
       await runTransaction(db, async (transaction) => {
         // ---------------------------------------------------------------------------------
-        // STEP 1: IDEMPOTENCY CHECK & SESSION VERIFICATION
+        // STEP 1: PARALLEL TRANSACTION READS (MAXIMUM SPEED CONCURRENCY)
         // ---------------------------------------------------------------------------------
-        const saleSnap = await transaction.get(saleRef);
+        const customerRef = (input.customerId && input.customerId !== 'walk-in')
+          ? doc(db!, 'customers', input.customerId)
+          : null;
+
+        // Build list of batch document IDs needed for FIFO depletion
+        const batchIdsToRead: string[] = [];
+        uniqueProductIds.forEach((pid) => {
+          const openBatchId = getOpeningStockBatchId(pid);
+          if (!batchIdsToRead.includes(openBatchId)) {
+            batchIdsToRead.push(openBatchId);
+          }
+          const batches = preloadedBatchesMap.get(pid) || [];
+          batches.forEach((b) => {
+            if (!batchIdsToRead.includes(b.id)) {
+              batchIdsToRead.push(b.id);
+            }
+          });
+        });
+
+        // Parallel fetch: Sale Doc + Customer + All Products + All Batches + All Discounts in 1 round-trip
+        const [
+          saleSnap,
+          custSnap,
+          prodSnaps,
+          batchSnaps,
+          discSnaps,
+        ] = await Promise.all([
+          transaction.get(saleRef),
+          customerRef ? transaction.get(customerRef) : Promise.resolve(null),
+          Promise.all(uniqueProductIds.map((pid) => transaction.get(doc(db!, 'products', pid)))),
+          Promise.all(batchIdsToRead.map((bid) => transaction.get(doc(db!, STOCK_BATCHES_COLLECTION, bid)))),
+          customerRef
+            ? Promise.all(uniqueProductIds.map((pid) => transaction.get(doc(db!, 'customerDiscounts', `${input.customerId}_${pid}`))))
+            : Promise.resolve([]),
+        ]);
+
+        // ---------------------------------------------------------------------------------
+        // STEP 1b: IDEMPOTENCY CHECK & SESSION VERIFICATION
+        // ---------------------------------------------------------------------------------
         if (saleSnap.exists()) {
           const existing = saleSnap.data() as SaleDocument;
           // Verify stored checkoutSessionId matches attempting session (idempotent retry)
@@ -543,88 +586,74 @@ export const processSaleTransaction = async (
 
         // ---------------------------------------------------------------------------------
         // STEP 2: AUTHORITATIVE PRODUCT READS & STOCK VERIFICATION
-    // ---------------------------------------------------------------------------------
-    const productSnapshots: Map<string, { ref: any; doc: ProductDocument }> = new Map();
-    const productIds: string[] = [];
+        // ---------------------------------------------------------------------------------
+        const productSnapshots: Map<string, { ref: any; doc: ProductDocument }> = new Map();
+        const productIds: string[] = [];
 
-    for (const item of input.items) {
-      if (!item.productId) throw new Error('Invalid product ID in sale items.');
-      const qty = Number(item.quantity);
-      if (!qty || qty <= 0) {
-        throw new Error(`Quantity for item ${item.productId} must be greater than zero.`);
-      }
+        uniqueProductIds.forEach((pid, idx) => {
+          const snap = prodSnaps[idx];
+          if (!snap.exists()) {
+            throw new Error(`Product ID "${pid}" not found in catalog.`);
+          }
+          productSnapshots.set(pid, { ref: snap.ref, doc: snap.data() as ProductDocument });
+          productIds.push(pid);
+        });
 
-      const prodRef = doc(db!, 'products', item.productId);
-      const prodSnap = await transaction.get(prodRef);
-      if (!prodSnap.exists()) {
-        throw new Error(`Product ID "${item.productId}" not found in catalog.`);
-      }
+        for (const item of input.items) {
+          if (!item.productId) throw new Error('Invalid product ID in sale items.');
+          const qty = Number(item.quantity);
+          if (!qty || qty <= 0) {
+            throw new Error(`Quantity for item ${item.productId} must be greater than zero.`);
+          }
 
-      const prodDoc = prodSnap.data() as ProductDocument;
-      const currentStock = Number(prodDoc.currentStock) || 0;
+          const prodRecord = productSnapshots.get(item.productId);
+          if (!prodRecord) {
+            throw new Error(`Product ID "${item.productId}" not found in catalog.`);
+          }
 
-      if (currentStock < qty) {
-        throw new InsufficientStockError(prodDoc.id, prodDoc.title, currentStock, qty);
-      }
-
-      productSnapshots.set(item.productId, { ref: prodRef, doc: prodDoc });
-      if (!productIds.includes(item.productId)) {
-        productIds.push(item.productId);
-      }
-    }
-
-    // ---------------------------------------------------------------------------------
-    // STEP 2b: AUTHORITATIVE STOCK BATCH READS (CONCURRENCY LOCKING & FRESHNESS)
-    // ---------------------------------------------------------------------------------
-    const batchSnapshots: Map<string, StockBatchDocument> = new Map();
-    for (const [prodId, batches] of preloadedBatchesMap.entries()) {
-      for (const b of batches) {
-        const bRef = doc(db!, STOCK_BATCHES_COLLECTION, b.id);
-        const bSnap = await transaction.get(bRef);
-        if (bSnap.exists()) {
-          batchSnapshots.set(b.id, bSnap.data() as StockBatchDocument);
+          const currentStock = Number(prodRecord.doc.currentStock) || 0;
+          if (currentStock < qty) {
+            throw new InsufficientStockError(prodRecord.doc.id, prodRecord.doc.title, currentStock, qty);
+          }
         }
-      }
-      const openBatchId = getOpeningStockBatchId(prodId);
-      const openRef = doc(db!, STOCK_BATCHES_COLLECTION, openBatchId);
-      const openSnap = await transaction.get(openRef);
-      if (openSnap.exists()) {
-        batchSnapshots.set(openBatchId, openSnap.data() as StockBatchDocument);
-      }
-    }
 
-    // ---------------------------------------------------------------------------------
-    // STEP 3: AUTHORITATIVE CUSTOMER READ (IF APPLICABLE)
-    // ---------------------------------------------------------------------------------
-    let customerDoc: CustomerDocument | null = null;
-    let customerRef: any = null;
+        // ---------------------------------------------------------------------------------
+        // STEP 2b: AUTHORITATIVE STOCK BATCH READS (CONCURRENCY LOCKING & FRESHNESS)
+        // ---------------------------------------------------------------------------------
+        const batchSnapshots: Map<string, StockBatchDocument> = new Map();
+        batchIdsToRead.forEach((bid, idx) => {
+          const snap = batchSnaps[idx];
+          if (snap.exists()) {
+            batchSnapshots.set(bid, snap.data() as StockBatchDocument);
+          }
+        });
 
-    if (input.customerId && input.customerId !== 'walk-in') {
-      customerRef = doc(db!, 'customers', input.customerId);
-      const custSnap = await transaction.get(customerRef);
-      if (!custSnap.exists()) {
-        throw new Error(`Customer ID "${input.customerId}" not found.`);
-      }
-      customerDoc = custSnap.data() as CustomerDocument;
-      if (!customerDoc.isActive) {
-        throw new Error(`Customer "${customerDoc.name}" is marked inactive and cannot be billed.`);
-      }
-    }
-
-    // ---------------------------------------------------------------------------------
-    // STEP 4: AUTHORITATIVE CUSTOMER-SPECIFIC DISCOUNT READS
-    // ---------------------------------------------------------------------------------
-    const customDiscountMap: Map<string, CustomerDiscountDocument> = new Map();
-    if (customerDoc) {
-      for (const prodId of productIds) {
-        const discDocId = `${customerDoc.id}_${prodId}`;
-        const discRef = doc(db!, 'customerDiscounts', discDocId);
-        const discSnap = await transaction.get(discRef);
-        if (discSnap.exists()) {
-          customDiscountMap.set(prodId, discSnap.data() as CustomerDiscountDocument);
+        // ---------------------------------------------------------------------------------
+        // STEP 3: AUTHORITATIVE CUSTOMER READ (IF APPLICABLE)
+        // ---------------------------------------------------------------------------------
+        let customerDoc: CustomerDocument | null = null;
+        if (customerRef) {
+          if (!custSnap || !custSnap.exists()) {
+            throw new Error(`Customer ID "${input.customerId}" not found.`);
+          }
+          customerDoc = custSnap.data() as CustomerDocument;
+          if (!customerDoc.isActive) {
+            throw new Error(`Customer "${customerDoc.name}" is marked inactive and cannot be billed.`);
+          }
         }
-      }
-    }
+
+        // ---------------------------------------------------------------------------------
+        // STEP 4: AUTHORITATIVE CUSTOMER-SPECIFIC DISCOUNT READS
+        // ---------------------------------------------------------------------------------
+        const customDiscountMap: Map<string, CustomerDiscountDocument> = new Map();
+        if (customerDoc && discSnaps) {
+          uniqueProductIds.forEach((pid, idx) => {
+            const snap = discSnaps[idx];
+            if (snap && snap.exists()) {
+              customDiscountMap.set(pid, snap.data() as CustomerDiscountDocument);
+            }
+          });
+        }
 
     // ---------------------------------------------------------------------------------
     // STEP 5: AUTHORITATIVE LINE ITEM & FINANCIAL CALCULATIONS

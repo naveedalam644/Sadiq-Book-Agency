@@ -10,6 +10,9 @@ export interface PurchaseItemRow {
   categoryName?: string;
   classification?: ItemClassification;
   authorOrPublisher?: string;
+  targetClass?: string;
+  className?: string;
+  seriesName?: string;
   currentStock?: number;
   unit?: string;
   mrp: number | '';
@@ -537,21 +540,30 @@ export const matchesProductSearch = (
  */
 export const addOrIncrementPurchaseItem = (
   currentItems: PurchaseItemRow[],
-  product: ProductDocument
+  product: ProductDocument,
+  quantityToAdd = 1
 ): { updatedItems: PurchaseItemRow[]; isIncrement: boolean; updatedIndex: number } => {
   const existingIndex = currentItems.findIndex((item) => item.productId === product.id);
+  const qty = Math.max(1, Number(quantityToAdd) || 1);
 
   if (existingIndex >= 0) {
     const updated = [...currentItems];
     const existing = { ...updated[existingIndex] };
     const currentQty = typeof existing.quantity === 'number' ? existing.quantity : 1;
-    const newQty = currentQty + 1;
+    const newQty = currentQty + qty;
     const unitCost = typeof existing.unitCost === 'number' ? existing.unitCost : (product.costPrice || 0);
     const newTotal = Math.round(newQty * unitCost * 100) / 100;
 
     existing.quantity = newQty;
     existing.unitCost = unitCost;
     existing.totalCost = newTotal;
+    if (!existing.targetClass && (product.targetClass || product.className)) {
+      existing.targetClass = product.targetClass || product.className;
+      existing.className = product.className || product.targetClass;
+    }
+    if (!existing.seriesName && product.seriesName) {
+      existing.seriesName = product.seriesName;
+    }
     updated[existingIndex] = existing;
 
     return { updatedItems: updated, isIncrement: true, updatedIndex: existingIndex };
@@ -565,6 +577,8 @@ export const addOrIncrementPurchaseItem = (
     ? Math.round(mrp * (1 - defaultPubDisc / 100) * 100) / 100
     : (Number(product.costPrice) || 0);
 
+  const totalCost = Math.round(qty * defaultCost * 100) / 100;
+
   const newItem: PurchaseItemRow = {
     productId: product.id,
     productName: product.title,
@@ -572,13 +586,16 @@ export const addOrIncrementPurchaseItem = (
     categoryName: product.categoryName || '',
     classification: product.classification,
     authorOrPublisher: product.authorOrPublisher || '',
+    targetClass: product.targetClass || product.className,
+    className: product.className || product.targetClass,
+    seriesName: product.seriesName,
     currentStock: product.currentStock,
     unit: product.unit || 'piece',
     mrp: mrp || defaultCost,
     publisherDiscountPercent: defaultPubDisc,
-    quantity: 1,
+    quantity: qty,
     unitCost: defaultCost,
-    totalCost: defaultCost,
+    totalCost: totalCost,
   };
 
   return { updatedItems: [...currentItems, newItem], isIncrement: false, updatedIndex: currentItems.length };

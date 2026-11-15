@@ -14,6 +14,7 @@ import {
   Package,
   Maximize2,
   Minimize2,
+  GraduationCap,
 } from 'lucide-react';
 import { Modal } from '../common/Modal';
 import { Input } from '../common/Input';
@@ -41,6 +42,7 @@ import {
   matchesProductSearch,
   addOrIncrementPurchaseItem,
   updatePurchaseItemField,
+  sortProductsByClassSequence,
 } from '../../utils/purchaseFormHelpers';
 
 export type { PurchaseItemRow };
@@ -100,6 +102,7 @@ export const PurchaseFormModal: React.FC<PurchaseFormModalProps> = ({
   const [isSearching, setIsSearching] = useState(false);
   const [isResultsCollapsed, setIsResultsCollapsed] = useState(false);
   const [isExpandedHeight, setIsExpandedHeight] = useState(false);
+  const [inputQuantities, setInputQuantities] = useState<Record<string, number | ''>>({});
 
   // Load Active Publishers for Books intake flow
   useEffect(() => {
@@ -172,6 +175,7 @@ export const PurchaseFormModal: React.FC<PurchaseFormModalProps> = ({
       setClassificationFilter('all');
       setAuthorFilter('all');
       setIsResultsCollapsed(false);
+      setInputQuantities({});
       setItems([]);
     }
   }, [isOpen, suppliers]);
@@ -244,7 +248,7 @@ export const PurchaseFormModal: React.FC<PurchaseFormModalProps> = ({
 
   // In-memory filtered matching products: Dedicated Flow for Books vs Notebooks & Other Items
   const matchingProducts = useMemo(() => {
-    return availableProducts.filter((p) => {
+    const filtered = availableProducts.filter((p) => {
       if (intakeMode === 'books') {
         // Books Flow: Must be a book, and match Publisher > Series > Class
         const isBook = p.classification === 'book' || !p.classification;
@@ -276,6 +280,8 @@ export const PurchaseFormModal: React.FC<PurchaseFormModalProps> = ({
         );
       }
     });
+
+    return sortProductsByClassSequence(filtered);
   }, [
     availableProducts,
     intakeMode,
@@ -308,15 +314,19 @@ export const PurchaseFormModal: React.FC<PurchaseFormModalProps> = ({
   const remainingBalance = Math.max(0, grandTotal - numPaid);
 
   // Add product or increment quantity if already exists
-  const handleSelectProduct = (product: ProductDocument) => {
-    const { updatedItems, isIncrement } = addOrIncrementPurchaseItem(items, product);
+  const handleSelectProduct = (product: ProductDocument, quantityToAdd = 1) => {
+    const qty = Math.max(1, Number(quantityToAdd) || 1);
+    const { updatedItems, isIncrement } = addOrIncrementPurchaseItem(items, product, qty);
     setItems(updatedItems);
+
+    const classLabel = product.targetClass || product.className;
+    const classSuffix = classLabel ? ` (${classLabel})` : '';
 
     if (isIncrement) {
       const existing = updatedItems.find((i) => i.productId === product.id);
-      showFeedback(`Increased "${product.title}" quantity to ${existing?.quantity} units`);
+      showFeedback(`Updated "${product.title}"${classSuffix} quantity to ${existing?.quantity} units`);
     } else {
-      showFeedback(`Added "${product.title}" to purchase invoice`);
+      showFeedback(`Added ${qty} unit(s) of "${product.title}"${classSuffix} to purchase invoice`);
     }
   };
 
@@ -729,10 +739,13 @@ export const PurchaseFormModal: React.FC<PurchaseFormModalProps> = ({
                     <button
                       type="button"
                       onClick={() => {
-                        matchingProducts.forEach((p) => handleSelectProduct(p));
+                        matchingProducts.forEach((p) => {
+                          const qty = Number(inputQuantities[p.id]) || 1;
+                          handleSelectProduct(p, qty);
+                        });
                       }}
                       className="text-[11px] font-bold text-[#071F49] bg-[#F5B51B] hover:bg-[#F8CE4E] px-2.5 py-1 rounded-md transition shadow-xs cursor-pointer flex items-center gap-1 active:scale-95"
-                      title="Add all matching products to current invoice"
+                      title="Add all matching products to current invoice with entered quantities"
                     >
                       <Plus className="w-3.5 h-3.5" />
                       <span>Add All ({matchingProducts.length})</span>
@@ -776,11 +789,16 @@ export const PurchaseFormModal: React.FC<PurchaseFormModalProps> = ({
                     const existingItem = items.find((i) => i.productId === p.id);
                     const isAlreadyAdded = Boolean(existingItem);
                     const existingQty = existingItem?.quantity || 0;
+                    const resolvedClass =
+                      p.targetClass ||
+                      p.className ||
+                      (p.edition && /class|grade|prep|nursery|kg/i.test(p.edition) ? p.edition : undefined);
+                    const currentEnteredQty = inputQuantities[p.id] ?? 1;
 
                     return (
                       <div
                         key={p.id}
-                        className="px-3.5 py-2 sm:py-2.5 flex items-center justify-between gap-3 hover:bg-blue-50/40 transition"
+                        className="px-3.5 py-2.5 sm:py-3 flex items-center justify-between gap-3 hover:bg-blue-50/40 transition border-b border-slate-100 last:border-b-0"
                       >
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-1.5 flex-wrap">
@@ -795,6 +813,19 @@ export const PurchaseFormModal: React.FC<PurchaseFormModalProps> = ({
                                 {p.barcode}
                               </span>
                             )}
+                            {/* Class / Grade Badge */}
+                            {resolvedClass ? (
+                              <span className="text-[10px] bg-emerald-50 text-emerald-800 px-2 py-0.5 rounded-md font-bold border border-emerald-200 flex items-center gap-1 shadow-2xs">
+                                <GraduationCap className="w-3 h-3 text-emerald-600 shrink-0" />
+                                <span>Class: {resolvedClass}</span>
+                              </span>
+                            ) : null}
+                            {/* Series Badge */}
+                            {p.seriesName && (
+                              <span className="text-[10px] bg-blue-50 text-blue-800 px-1.5 py-0.2 rounded font-medium border border-blue-200">
+                                Series: {p.seriesName}
+                              </span>
+                            )}
                             <span className="text-[10px] bg-indigo-50 text-indigo-700 px-1.5 py-0.2 rounded font-medium border border-indigo-100">
                               {p.categoryName || 'General'}
                             </span>
@@ -803,13 +834,21 @@ export const PurchaseFormModal: React.FC<PurchaseFormModalProps> = ({
                             </span>
                           </div>
 
-                          <div className="flex items-center gap-2 text-[11px] text-slate-500 mt-0.5 flex-wrap">
+                          <div className="flex items-center gap-2 text-[11px] text-slate-500 mt-1 flex-wrap">
                             {p.authorOrPublisher && (
                               <span className="text-slate-600 font-medium italic">
                                 Publisher / Author: {p.authorOrPublisher}
                               </span>
                             )}
                             {p.authorOrPublisher && <span>•</span>}
+                            {resolvedClass && (
+                              <>
+                                <span className="font-semibold text-emerald-700">
+                                  Grade: {resolvedClass}
+                                </span>
+                                <span>•</span>
+                              </>
+                            )}
                             <span>
                               Current Stock:{' '}
                               <strong
@@ -841,25 +880,60 @@ export const PurchaseFormModal: React.FC<PurchaseFormModalProps> = ({
                           </div>
                         </div>
 
-                        <div className="flex items-center gap-2 shrink-0">
+                        {/* Direct Quantity Input Box & Add Button */}
+                        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+                          <div className="flex items-center border border-slate-300 rounded-lg overflow-hidden bg-white shadow-2xs focus-within:border-[#F5B51B] focus-within:ring-1 focus-within:ring-[#F5B51B]">
+                            <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-1.5 py-1 select-none border-r border-slate-200">
+                              Qty
+                            </span>
+                            <input
+                              type="number"
+                              min="1"
+                              step="1"
+                              value={currentEnteredQty}
+                              onChange={(e) => {
+                                const val = e.target.value === '' ? '' : Math.max(1, parseInt(e.target.value, 10) || 1);
+                                setInputQuantities((prev) => ({ ...prev, [p.id]: val }));
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  e.preventDefault();
+                                  const qty = Number(inputQuantities[p.id]) || 1;
+                                  handleSelectProduct(p, qty);
+                                }
+                              }}
+                              placeholder="1"
+                              className="w-14 sm:w-16 text-xs font-mono font-bold text-center py-1 px-1 text-slate-900 focus:outline-none"
+                              title="Enter quantity to add directly to invoice (Press Enter to add)"
+                            />
+                          </div>
+
                           {isAlreadyAdded ? (
                             <button
                               type="button"
-                              onClick={() => handleSelectProduct(p)}
-                              className="flex items-center gap-1 text-xs font-bold bg-emerald-50 text-emerald-800 hover:bg-emerald-100 border border-emerald-300 rounded-lg px-3 py-1.5 transition cursor-pointer shadow-xs active:scale-95"
-                              title="Click to increase quantity in this invoice"
+                              onClick={() => {
+                                const qty = Number(inputQuantities[p.id]) || 1;
+                                handleSelectProduct(p, qty);
+                              }}
+                              className="flex items-center gap-1 text-xs font-bold bg-emerald-50 text-emerald-800 hover:bg-emerald-100 border border-emerald-300 rounded-lg px-2.5 sm:px-3 py-1.5 transition cursor-pointer shadow-xs active:scale-95"
+                              title="Click to add entered quantity to invoice"
                             >
-                              <Check className="w-3.5 h-3.5 text-emerald-600" />
-                              <span>In Invoice (Qty: {existingQty}) +1</span>
+                              <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                              <span className="hidden sm:inline">In Bill ({existingQty})</span>
+                              <span>+{currentEnteredQty || 1}</span>
                             </button>
                           ) : (
                             <button
                               type="button"
-                              onClick={() => handleSelectProduct(p)}
-                              className="flex items-center gap-1.5 text-xs font-bold bg-[#071F49] text-white hover:bg-[#0A255B] rounded-lg px-3 py-1.5 transition cursor-pointer shadow-xs active:scale-95"
+                              onClick={() => {
+                                const qty = Number(inputQuantities[p.id]) || 1;
+                                handleSelectProduct(p, qty);
+                              }}
+                              className="flex items-center gap-1.5 text-xs font-bold bg-[#071F49] text-white hover:bg-[#0A255B] rounded-lg px-2.5 sm:px-3 py-1.5 transition cursor-pointer shadow-xs active:scale-95"
+                              title="Add to purchase invoice with entered quantity"
                             >
-                              <Plus className="w-3.5 h-3.5 text-[#F5B51B]" />
-                              <span>+ Add to Invoice</span>
+                              <Plus className="w-3.5 h-3.5 text-[#F5B51B] shrink-0" />
+                              <span>+ Add {currentEnteredQty && Number(currentEnteredQty) > 1 ? `(${currentEnteredQty})` : ''}</span>
                             </button>
                           )}
                         </div>
@@ -949,6 +1023,17 @@ export const PurchaseFormModal: React.FC<PurchaseFormModalProps> = ({
                           {row.sku && (
                             <span className="font-mono text-[9px] bg-slate-100 text-slate-600 px-1 py-0.2 rounded border border-slate-200 font-bold">
                               {row.sku}
+                            </span>
+                          )}
+                          {(row.targetClass || row.className) && (
+                            <span className="text-[9px] bg-emerald-50 text-emerald-800 px-1.5 py-0.2 rounded border border-emerald-200 font-bold flex items-center gap-0.5">
+                              <GraduationCap className="w-2.5 h-2.5 text-emerald-600 shrink-0" />
+                              Class: {row.targetClass || row.className}
+                            </span>
+                          )}
+                          {row.seriesName && (
+                            <span className="text-[9px] bg-blue-50 text-blue-800 px-1 py-0.2 rounded border border-blue-200 font-medium">
+                              Series: {row.seriesName}
                             </span>
                           )}
                           {row.categoryName && (
