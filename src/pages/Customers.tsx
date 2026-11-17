@@ -11,6 +11,7 @@ import {
   TrendingDown,
   Receipt,
   Globe,
+  Trash2,
 } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
@@ -29,6 +30,7 @@ import {
   getCustomersPaginated,
   createCustomer,
   updateCustomer,
+  deleteCustomer,
   type CustomerFilters,
 } from '../services/customerService';
 import { formatCurrency } from '../utils/formatters';
@@ -134,6 +136,28 @@ export const Customers: React.FC = () => {
   const totalAdvance = customers.reduce((sum, c) => sum + Math.abs(Math.min(0, c.currentBalance || 0)), 0);
   const wholesalerCount = customers.filter((c) => c.type === 'wholesaler').length;
   const marketshopCount = customers.filter((c) => c.type === 'marketshop').length;
+
+  const handleDeleteCustomer = async (cust: CustomerDocument) => {
+    if (
+      !window.confirm(
+        `Are you sure you want to permanently delete customer "${cust.name}" (${cust.shopName || cust.id})? This will remove the account from Firebase.`
+      )
+    ) {
+      return;
+    }
+
+    try {
+      await deleteCustomer(
+        cust.id,
+        currentUser?.uid || 'admin',
+        currentUser?.email || 'admin@sadiqbookagency.com'
+      );
+      success(`Customer "${cust.name}" has been deleted.`);
+      loadCustomers(null);
+    } catch (err: any) {
+      toastError(err?.message || 'Failed to delete customer');
+    }
+  };
 
   const columns: Column<CustomerDocument>[] = [
     {
@@ -301,6 +325,15 @@ export const Customers: React.FC = () => {
             title="Edit Customer"
           >
             <Edit2 className="w-4 h-4" />
+          </button>
+
+          <button
+            type="button"
+            onClick={() => handleDeleteCustomer(row)}
+            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer"
+            title="Delete Customer from Database"
+          >
+            <Trash2 className="w-4 h-4" />
           </button>
         </div>
       ),
@@ -485,6 +518,10 @@ export const Customers: React.FC = () => {
           setEditingCustomer(null);
         }}
         onSubmit={handleSubmit}
+        onDelete={async (cust) => {
+          setIsFormModalOpen(false);
+          await handleDeleteCustomer(cust);
+        }}
         initialData={editingCustomer}
         isLoading={isSubmitting}
       />
@@ -494,6 +531,7 @@ export const Customers: React.FC = () => {
         isOpen={Boolean(viewingCustomer)}
         onClose={() => setViewingCustomer(null)}
         customer={viewingCustomer}
+        onDelete={handleDeleteCustomer}
         onOpenPaymentModal={(c) => {
           setPaymentModalCustomer(c);
         }}

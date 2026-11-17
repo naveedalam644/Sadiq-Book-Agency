@@ -19,6 +19,7 @@ import { Expenses } from '../pages/Expenses';
 import { RoughBill } from '../pages/RoughBill';
 import { SystemStatus } from '../pages/SystemStatus';
 import { CustomerKhataPortal } from '../pages/CustomerKhataPortal';
+import { PublicInvoiceView } from '../pages/PublicInvoiceView';
 import { NotFound } from '../pages/NotFound';
 
 export const AppRoutes: React.FC = () => {
@@ -28,6 +29,9 @@ export const AppRoutes: React.FC = () => {
       <Route path="/login" element={<Login />} />
       <Route path="/khata/:portalCode" element={<CustomerKhataPortal />} />
       <Route path="/portal/:portalCode" element={<CustomerKhataPortal />} />
+      <Route path="/verify-invoice/:invoiceNo" element={<PublicInvoiceView />} />
+      <Route path="/invoice/:invoiceNo" element={<PublicInvoiceView />} />
+      <Route path="/bill/:invoiceNo" element={<PublicInvoiceView />} />
 
       {/* Protected Routes inside AppLayout */}
       <Route element={<ProtectedRoute />}>

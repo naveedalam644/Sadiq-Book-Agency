@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Sparkles, Building2, Layers, Plus, FileSpreadsheet, ScanBarcode, Camera, CheckCircle2 } from 'lucide-react';
+import { Sparkles, Building2, Layers, Plus, FileSpreadsheet, ScanBarcode, Camera, CheckCircle2, Trash2 } from 'lucide-react';
 import { Modal } from '../common/Modal';
 import { Input } from '../common/Input';
 import { Select } from '../common/Select';
@@ -27,6 +27,7 @@ export interface ProductFormModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSubmit: (input: CreateProductInput) => Promise<void>;
+  onDelete?: (product: ProductDocument) => Promise<void>;
   initialData?: ProductDocument | null;
   categories: CategoryDocument[];
   isLoading?: boolean;
@@ -37,6 +38,7 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
   isOpen,
   onClose,
   onSubmit,
+  onDelete,
   initialData,
   categories,
   isLoading = false,
@@ -440,19 +442,42 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
       description="Record product specifications, publisher, series, purchase cost, and inventory thresholds."
       size="xl"
       footer={
-        <div className="flex items-center justify-end gap-3 w-full">
-          <Button variant="outline" type="button" onClick={onClose} disabled={isLoading}>
-            Cancel
-          </Button>
-          <Button
-            variant="primary"
-            type="submit"
-            form="product-form"
-            isLoading={isLoading}
-            disabled={isLoading}
-          >
-            {initialData ? 'Save Changes' : 'Create Product'}
-          </Button>
+        <div className="flex items-center justify-between gap-3 w-full">
+          <div>
+            {initialData && onDelete && (
+              <Button
+                variant="danger"
+                type="button"
+                onClick={() => {
+                  if (
+                    window.confirm(
+                      `Are you sure you want to permanently delete "${initialData.title}" (${initialData.sku})? This cannot be undone.`
+                    )
+                  ) {
+                    onDelete(initialData);
+                  }
+                }}
+                disabled={isLoading}
+                leftIcon={<Trash2 className="w-4 h-4" />}
+              >
+                Delete Product
+              </Button>
+            )}
+          </div>
+          <div className="flex items-center gap-3">
+            <Button variant="outline" type="button" onClick={onClose} disabled={isLoading}>
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              type="submit"
+              form="product-form"
+              isLoading={isLoading}
+              disabled={isLoading}
+            >
+              {initialData ? 'Save Changes' : 'Create Product'}
+            </Button>
+          </div>
         </div>
       }
     >
@@ -910,14 +935,14 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
           <div className="p-4 bg-amber-50/60 border border-amber-200 rounded-xl space-y-3">
             <div className="flex items-center justify-between">
               <h4 className="text-xs font-bold uppercase tracking-wider text-[#071F49]">
-                Stationery Pricing (Purchase Cost & Open POS Selling Rates)
+                Stationery & Register Pricing
               </h4>
               <span className="text-[11px] text-amber-900 font-medium">
-                No MRP / No Publisher Discount: Set Purchase Cost (Selling rate entered at POS)
+                Set Purchase Cost & Default Sale Price (Open for concession at POS)
               </span>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <Input
                   label="Purchase Price (Cost) (PKR) *"
@@ -936,49 +961,20 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
 
               <div>
                 <Input
-                  label="Default Sale Rate (PKR) (Optional)"
+                  label="Default Sale Price (PKR) *"
                   type="number"
                   min="0"
                   step="any"
-                  placeholder="Leave empty or set default"
+                  placeholder="e.g. 200"
                   value={retailPrice}
                   onChange={(e) => {
                     const val = e.target.value === '' ? '' : parseFloat(e.target.value);
                     setRetailPrice(val);
-                    if (wholesalePrice === 0 || wholesalePrice === '') setWholesalePrice(val);
-                    if (marketShopPrice === 0 || marketShopPrice === '') setMarketShopPrice(val);
+                    setWholesalePrice(val);
+                    setMarketShopPrice(val);
                   }}
-                  helperText="Optional default rate (Open at POS)"
-                />
-              </div>
-
-              <div>
-                <Input
-                  label="Wholesale Rate (PKR)"
-                  type="number"
-                  min="0"
-                  step="any"
-                  placeholder="e.g. 175"
-                  value={wholesalePrice}
-                  onChange={(e) =>
-                    setWholesalePrice(e.target.value === '' ? '' : parseFloat(e.target.value))
-                  }
-                  helperText="Bulk wholesale dealer price"
-                />
-              </div>
-
-              <div>
-                <Input
-                  label="Market Shop Rate (PKR)"
-                  type="number"
-                  min="0"
-                  step="any"
-                  placeholder="e.g. 180"
-                  value={marketShopPrice}
-                  onChange={(e) =>
-                    setMarketShopPrice(e.target.value === '' ? '' : parseFloat(e.target.value))
-                  }
-                  helperText="Market bookstore / partner rate"
+                  helperText="Default selling rate (Can be modified per customer at POS)"
+                  required
                 />
               </div>
             </div>

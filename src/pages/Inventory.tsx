@@ -1345,6 +1345,10 @@ export const Inventory: React.FC = () => {
           setScannedBarcodeForAdd('');
         }}
         onSubmit={handleProductSubmit}
+        onDelete={async (prod) => {
+          setIsAddProductModalOpen(false);
+          await handleDeleteProduct(prod);
+        }}
         initialData={editingProduct}
         initialBarcode={scannedBarcodeForAdd}
         categories={categories}
@@ -1359,6 +1363,7 @@ export const Inventory: React.FC = () => {
           setEditingProduct(prod);
           setIsAddProductModalOpen(true);
         }}
+        onDelete={handleDeleteProduct}
         onViewHistory={(prod) => setHistoryProduct(prod)}
       />
 

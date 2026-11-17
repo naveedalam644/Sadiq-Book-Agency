@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { AlertCircle, Store, Building2, User, Globe, Copy, Check, RefreshCw } from 'lucide-react';
+import { AlertCircle, Store, Building2, User, Globe, Copy, Check, RefreshCw, Trash2 } from 'lucide-react';
 import { Modal } from '../common/Modal';
 import { Input } from '../common/Input';
 import { Button } from '../common/Button';
@@ -14,6 +14,7 @@ export interface CustomerFormModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSubmit: (input: CreateCustomerInput) => Promise<void>;
+  onDelete?: (customer: CustomerDocument) => Promise<void>;
   initialData?: CustomerDocument | null;
   isLoading?: boolean;
 }
@@ -22,6 +23,7 @@ export const CustomerFormModal: React.FC<CustomerFormModalProps> = ({
   isOpen,
   onClose,
   onSubmit,
+  onDelete,
   initialData,
   isLoading = false,
 }) => {
@@ -156,13 +158,36 @@ export const CustomerFormModal: React.FC<CustomerFormModalProps> = ({
       description="Manage account details, credit limits, base discounts, and Khata ledger terms."
       size="lg"
       footer={
-        <div className="flex items-center justify-end gap-3 w-full">
-          <Button variant="outline" type="button" onClick={onClose} disabled={isLoading}>
-            Cancel
-          </Button>
-          <Button variant="gold" type="submit" form="customer-form" isLoading={isLoading}>
-            {initialData ? 'Save Changes' : 'Create Customer Account'}
-          </Button>
+        <div className="flex items-center justify-between gap-3 w-full">
+          <div>
+            {initialData && onDelete && (
+              <Button
+                variant="danger"
+                type="button"
+                onClick={() => {
+                  if (
+                    window.confirm(
+                      `Are you sure you want to permanently delete customer "${initialData.name}"? This cannot be undone.`
+                    )
+                  ) {
+                    onDelete(initialData);
+                  }
+                }}
+                disabled={isLoading}
+                leftIcon={<Trash2 className="w-4 h-4" />}
+              >
+                Delete Customer
+              </Button>
+            )}
+          </div>
+          <div className="flex items-center gap-3">
+            <Button variant="outline" type="button" onClick={onClose} disabled={isLoading}>
+              Cancel
+            </Button>
+            <Button variant="gold" type="submit" form="customer-form" isLoading={isLoading}>
+              {initialData ? 'Save Changes' : 'Create Customer Account'}
+            </Button>
+          </div>
         </div>
       }
     >

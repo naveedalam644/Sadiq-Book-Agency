@@ -1,5 +1,5 @@
 import React from 'react';
-import { Barcode, AlertTriangle, TrendingUp, Calendar, CheckCircle, History, Layers } from 'lucide-react';
+import { Barcode, AlertTriangle, TrendingUp, Calendar, CheckCircle, History, Layers, Trash2 } from 'lucide-react';
 import { Modal } from '../common/Modal';
 import { Badge } from '../common/Badge';
 import { Button } from '../common/Button';
@@ -13,6 +13,7 @@ export interface ProductDetailModalProps {
   product: ProductDocument | null;
   onEdit?: (product: ProductDocument) => void;
   onViewHistory?: (product: ProductDocument) => void;
+  onDelete?: (product: ProductDocument) => void;
 }
 
 export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
@@ -21,6 +22,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
   product,
   onEdit,
   onViewHistory,
+  onDelete,
 }) => {
   const [activeBatches, setActiveBatches] = React.useState<StockBatchDocument[]>([]);
 
@@ -87,6 +89,25 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                 }}
               >
                 Edit Product
+              </Button>
+            )}
+            {onDelete && (
+              <Button
+                variant="danger"
+                size="sm"
+                onClick={() => {
+                  if (
+                    window.confirm(
+                      `Are you sure you want to permanently delete "${product.title}" (${product.sku})? This cannot be undone.`
+                    )
+                  ) {
+                    onClose();
+                    onDelete(product);
+                  }
+                }}
+                leftIcon={<Trash2 className="w-3.5 h-3.5" />}
+              >
+                Delete Product
               </Button>
             )}
           </div>

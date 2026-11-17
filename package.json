@@ -59,9 +59,11 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@types/qrcode": "^1.5.6",
     "firebase": "^13.1.0",
     "html5-qrcode": "^2.3.8",
     "lucide-react": "^1.65.0",
+    "qrcode": "^1.5.4",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "react-router-dom": "^7.18.5"

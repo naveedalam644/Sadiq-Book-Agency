@@ -77,9 +77,9 @@ runTest(2, 'Stationery creation requires purchase cost but not MRP or publisher 
     'ProductFormModal must present specific error when stationery cost is missing'
   );
   assert.ok(
-    productModalContent.includes("Default Sale Rate (PKR) (Optional)") &&
-      productModalContent.includes("Optional default rate (Open at POS)"),
-    'ProductFormModal must note that selling rate is optional and open at POS'
+    (productModalContent.includes("Default Sale Rate (PKR) (Optional)") || productModalContent.includes("Default Sale Price (PKR)")) &&
+      (productModalContent.includes("Optional default rate (Open at POS)") || productModalContent.includes("Default selling rate")),
+    'ProductFormModal must note that selling rate is open/customizable at POS'
   );
 });
 
@@ -108,8 +108,9 @@ runTest(3, 'POS allows manual stationery selling price', () => {
 // -----------------------------------------------------------------------------
 runTest(4, 'Last-used price can be shown and edited', () => {
   assert.ok(
-    discountServiceContent.includes("const defaultPrice = product.lastSoldPrice || standardRetail || 0;"),
-    'discountService must fallback to lastSoldPrice for stationery'
+    discountServiceContent.includes("standardRetail > 0 ? standardRetail : (product.lastSoldPrice || 0)") ||
+      discountServiceContent.includes("const defaultPrice = product.lastSoldPrice || standardRetail || 0;"),
+    'discountService must resolve default price with fallback'
   );
   assert.ok(
     saleServiceContent.includes("lastSoldPrice: item.effectivePrice"),

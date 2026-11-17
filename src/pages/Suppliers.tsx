@@ -6,6 +6,7 @@ import {
   Phone,
   Mail,
   MapPin,
+  Trash2,
 } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
@@ -22,6 +23,7 @@ import {
   createSupplier,
   updateSupplier,
   toggleSupplierStatus,
+  deleteSupplier,
   type SupplierFilters,
 } from '../services/supplierService';
 import { formatCurrency } from '../utils/formatters';
@@ -132,6 +134,28 @@ export const Suppliers: React.FC = () => {
     }
   };
 
+  const handleDeleteSupplier = async (sup: SupplierDocument) => {
+    if (
+      !window.confirm(
+        `Are you sure you want to permanently delete supplier "${sup.companyName}"? This will remove the supplier from Firebase.`
+      )
+    ) {
+      return;
+    }
+
+    try {
+      await deleteSupplier(
+        sup.id,
+        currentUser?.uid || 'admin',
+        currentUser?.email || 'admin@sadiqbookagency.com'
+      );
+      success(`Supplier "${sup.companyName}" has been deleted.`);
+      loadSuppliers(null);
+    } catch (err: any) {
+      toastError(err?.message || 'Failed to delete supplier');
+    }
+  };
+
   const columns: Column<SupplierDocument>[] = [
     {
       key: 'companyName',
@@ -231,6 +255,14 @@ export const Suppliers: React.FC = () => {
             title="Edit Supplier"
           >
             <Edit className="w-4 h-4" />
+          </button>
+          <button
+            type="button"
+            onClick={() => handleDeleteSupplier(row)}
+            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer"
+            title="Delete Supplier from Database"
+          >
+            <Trash2 className="w-4 h-4" />
           </button>
         </div>
       ),
@@ -335,6 +367,10 @@ export const Suppliers: React.FC = () => {
           setEditingSupplier(null);
         }}
         onSubmit={handleSubmit}
+        onDelete={async (sup) => {
+          setIsFormModalOpen(false);
+          await handleDeleteSupplier(sup);
+        }}
         initialData={editingSupplier}
         isLoading={isSubmitting}
       />
@@ -347,6 +383,7 @@ export const Suppliers: React.FC = () => {
           setEditingSupplier(sup);
           setIsFormModalOpen(true);
         }}
+        onDelete={handleDeleteSupplier}
         onViewPurchase={(pur) => setViewingPurchase(pur)}
       />
 

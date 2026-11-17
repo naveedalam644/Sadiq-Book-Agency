@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Building2, Phone, Mail, MapPin, Receipt, Calendar, ChevronRight } from 'lucide-react';
+import { Building2, Phone, Mail, MapPin, Receipt, Calendar, ChevronRight, Trash2 } from 'lucide-react';
 import { Modal } from '../common/Modal';
 import { Badge } from '../common/Badge';
 import { Button } from '../common/Button';
@@ -13,6 +13,7 @@ export interface SupplierDetailModalProps {
   supplier: SupplierDocument | null;
   onEdit?: (supplier: SupplierDocument) => void;
   onViewPurchase?: (purchase: PurchaseDocument) => void;
+  onDelete?: (supplier: SupplierDocument) => void;
 }
 
 export const SupplierDetailModal: React.FC<SupplierDetailModalProps> = ({
@@ -21,6 +22,7 @@ export const SupplierDetailModal: React.FC<SupplierDetailModalProps> = ({
   supplier,
   onEdit,
   onViewPurchase,
+  onDelete,
 }) => {
   const [purchases, setPurchases] = useState<PurchaseDocument[]>([]);
   const [loadingPurchases, setLoadingPurchases] = useState(false);
@@ -48,21 +50,44 @@ export const SupplierDetailModal: React.FC<SupplierDetailModalProps> = ({
       size="lg"
       footer={
         <div className="flex items-center justify-between w-full">
-          <Button variant="outline" size="sm" onClick={onClose}>
-            Close
-          </Button>
-          {onEdit && (
-            <Button
-              variant="gold"
-              size="sm"
-              onClick={() => {
-                onClose();
-                onEdit(supplier);
-              }}
-            >
-              Edit Supplier
+          <div>
+            {onDelete && (
+              <Button
+                variant="danger"
+                size="sm"
+                onClick={() => {
+                  if (
+                    window.confirm(
+                      `Are you sure you want to permanently delete supplier "${supplier.companyName}"? This will remove the supplier from Firebase.`
+                    )
+                  ) {
+                    onClose();
+                    onDelete(supplier);
+                  }
+                }}
+                leftIcon={<Trash2 className="w-3.5 h-3.5" />}
+              >
+                Delete Supplier
+              </Button>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={onClose}>
+              Close
             </Button>
-          )}
+            {onEdit && (
+              <Button
+                variant="gold"
+                size="sm"
+                onClick={() => {
+                  onClose();
+                  onEdit(supplier);
+                }}
+              >
+                Edit Supplier
+              </Button>
+            )}
+          </div>
         </div>
       }
     >

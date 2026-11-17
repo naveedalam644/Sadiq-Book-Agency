@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Trash2 } from 'lucide-react';
 import { Modal } from '../common/Modal';
 import { Input } from '../common/Input';
 import { Button } from '../common/Button';
@@ -9,6 +10,7 @@ export interface SupplierFormModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSubmit: (input: CreateSupplierInput) => Promise<void>;
+  onDelete?: (supplier: SupplierDocument) => Promise<void>;
   initialData?: SupplierDocument | null;
   isLoading?: boolean;
 }
@@ -17,6 +19,7 @@ export const SupplierFormModal: React.FC<SupplierFormModalProps> = ({
   isOpen,
   onClose,
   onSubmit,
+  onDelete,
   initialData,
   isLoading = false,
 }) => {
@@ -95,19 +98,42 @@ export const SupplierFormModal: React.FC<SupplierFormModalProps> = ({
       description="Register publishing houses, notebook paper mills, and stationery distributors."
       size="md"
       footer={
-        <div className="flex items-center justify-end gap-3 w-full">
-          <Button variant="outline" type="button" onClick={onClose} disabled={isLoading}>
-            Cancel
-          </Button>
-          <Button
-            variant="gold"
-            type="submit"
-            form="supplier-form"
-            isLoading={isLoading}
-            disabled={isLoading}
-          >
-            {initialData ? 'Save Changes' : 'Register Supplier'}
-          </Button>
+        <div className="flex items-center justify-between gap-3 w-full">
+          <div>
+            {initialData && onDelete && (
+              <Button
+                variant="danger"
+                type="button"
+                onClick={() => {
+                  if (
+                    window.confirm(
+                      `Are you sure you want to permanently delete supplier "${initialData.companyName}"? This will remove the supplier from Firebase.`
+                    )
+                  ) {
+                    onDelete(initialData);
+                  }
+                }}
+                disabled={isLoading}
+                leftIcon={<Trash2 className="w-4 h-4" />}
+              >
+                Delete Supplier
+              </Button>
+            )}
+          </div>
+          <div className="flex items-center gap-3">
+            <Button variant="outline" type="button" onClick={onClose} disabled={isLoading}>
+              Cancel
+            </Button>
+            <Button
+              variant="gold"
+              type="submit"
+              form="supplier-form"
+              isLoading={isLoading}
+              disabled={isLoading}
+            >
+              {initialData ? 'Save Changes' : 'Register Supplier'}
+            </Button>
+          </div>
         </div>
       }
     >

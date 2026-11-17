@@ -5,6 +5,7 @@ import {
   getDocs,
   setDoc,
   updateDoc,
+  deleteDoc,
   query,
   where,
   limit,
@@ -281,6 +282,34 @@ export const toggleSupplierStatus = async (
     'TOGGLE_SUPPLIER_STATUS',
     'suppliers',
     `Supplier ${id} marked as ${isActive ? 'Active' : 'Inactive'}`,
+    id,
+    userId,
+    userEmail
+  );
+};
+
+export const deleteSupplier = async (
+  id: string,
+  userId = 'system',
+  userEmail = 'admin@sadiqbookagency.com'
+): Promise<void> => {
+  if (!db || !id) throw new Error('Firestore not initialized');
+
+  const existing = await getSupplierById(id);
+  if (!existing) return;
+
+  const supRef = doc(db, 'suppliers', id);
+  await deleteDoc(supRef);
+  invalidateSuppliersCache();
+
+  if (existing.isActive) {
+    await updateInventorySummaryDeltas({ suppliersDelta: -1 });
+  }
+
+  await logAuditEvent(
+    'DELETE_SUPPLIER',
+    'suppliers',
+    `Deleted supplier: ${existing.companyName} (${existing.contactPerson || id})`,
     id,
     userId,
     userEmail

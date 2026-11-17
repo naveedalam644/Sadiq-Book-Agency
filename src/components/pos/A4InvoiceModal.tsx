@@ -8,6 +8,7 @@ import { WhatsAppIcon } from '../common/WhatsAppIcon';
 import { buildInvoiceWhatsAppMessage } from '../../utils/whatsappTemplates';
 import { getCustomerById } from '../../services/customerService';
 import { downloadInvoicePdf } from '../../utils/invoicePdfGenerator';
+import { generateInvoiceQrDataUrl } from '../../utils/qrCodeHelper';
 
 const PRINTER_STORAGE_KEY = 'sba_pos_printer_type';
 
@@ -40,6 +41,7 @@ export const A4InvoiceModal: React.FC<A4InvoiceModalProps> = ({
   const [isPrinting, setIsPrinting] = useState(false);
   const [isWhatsAppModalOpen, setIsWhatsAppModalOpen] = useState(false);
   const [customerData, setCustomerData] = useState<CustomerDocument | null>(null);
+  const [qrCodeUrl, setQrCodeUrl] = useState<string>('');
 
   useEffect(() => {
     if (sale?.customerId) {
@@ -50,6 +52,16 @@ export const A4InvoiceModal: React.FC<A4InvoiceModalProps> = ({
       setCustomerData(null);
     }
   }, [sale?.customerId]);
+
+  useEffect(() => {
+    if (sale?.invoiceNo) {
+      generateInvoiceQrDataUrl(sale.invoiceNo, 220)
+        .then(setQrCodeUrl)
+        .catch((err) => console.warn('QR Code generation failed:', err));
+    } else {
+      setQrCodeUrl('');
+    }
+  }, [sale?.invoiceNo]);
 
   if (!isOpen || !sale) return null;
 
@@ -380,6 +392,25 @@ export const A4InvoiceModal: React.FC<A4InvoiceModalProps> = ({
                 )}
               </div>
 
+              {/* Thermal Receipt QR Code (Online Digital Verification) */}
+              {qrCodeUrl && (
+                <div className="text-center my-2 text-black flex flex-col items-center">
+                  <div className="border-2 border-black p-1 bg-white inline-block">
+                    <img
+                      src={qrCodeUrl}
+                      alt={`QR Code ${sale.invoiceNo}`}
+                      className="w-24 h-24 block mx-auto"
+                    />
+                  </div>
+                  <span className="text-[9px] font-black uppercase tracking-wider mt-1 text-black">
+                    Scan for Digital Bill
+                  </span>
+                  <span className="text-[8px] font-mono font-bold text-black">
+                    {formattedInvoiceNo}
+                  </span>
+                </div>
+              )}
+
               {/* Thermal Receipt Footer */}
               <div className="text-center pt-3 border-t-2 border-dashed border-black mt-3 space-y-1 text-black">
                 <p className="text-[10px] font-black uppercase">THANK YOU FOR YOUR VISIT!</p>
@@ -572,6 +603,27 @@ export const A4InvoiceModal: React.FC<A4InvoiceModalProps> = ({
                       {isCreditSale && <li>Please ensure payment clearance on or before due date.</li>}
                     </ul>
                   </div>
+
+                  {qrCodeUrl && (
+                    <div className="border-t border-slate-300 pt-2 flex items-center gap-2.5">
+                      <div className="border border-black p-0.5 bg-white shrink-0">
+                        <img
+                          src={qrCodeUrl}
+                          alt={`QR ${sale.invoiceNo}`}
+                          className="w-14 h-14 block"
+                        />
+                      </div>
+                      <div className="text-[9px] leading-tight text-slate-700">
+                        <span className="font-bold text-black uppercase block tracking-wider">
+                          Digital Bill Verification
+                        </span>
+                        <span>Scan QR code with smartphone to view full official itemized bill details online.</span>
+                        <span className="font-mono font-bold text-black block mt-0.5">
+                          {formattedInvoiceNo}
+                        </span>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* Right Column: Financial Totals */}

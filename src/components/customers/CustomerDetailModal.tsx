@@ -63,6 +63,7 @@ export interface CustomerDetailModalProps {
   customer: CustomerDocument | null;
   onOpenPaymentModal: (customer: CustomerDocument) => void;
   onOpenDiscountModal: (customer: CustomerDocument, discount?: CustomerDiscountDocument) => void;
+  onDelete?: (customer: CustomerDocument) => void;
 }
 
 export const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
@@ -71,6 +72,7 @@ export const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
   customer,
   onOpenPaymentModal,
   onOpenDiscountModal,
+  onDelete,
 }) => {
   const { isAdmin } = useAuth();
   const { success: toastSuccess, error: toastError } = useToast();
@@ -225,6 +227,25 @@ export const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
                   WhatsApp Reminder
                 </Button>
               </>
+            )}
+            {onDelete && (
+              <Button
+                variant="danger"
+                size="sm"
+                onClick={() => {
+                  if (
+                    window.confirm(
+                      `Are you sure you want to permanently delete customer "${customer.name}"? This will remove the account from Firebase.`
+                    )
+                  ) {
+                    onClose();
+                    onDelete(customer);
+                  }
+                }}
+                leftIcon={<Trash2 className="w-3.5 h-3.5" />}
+              >
+                Delete Customer
+              </Button>
             )}
             <Button
               variant="outline"

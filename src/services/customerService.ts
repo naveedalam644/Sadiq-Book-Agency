@@ -5,6 +5,7 @@ import {
   getDocs,
   setDoc,
   updateDoc,
+  deleteDoc,
   query,
   where,
   limit,
@@ -393,6 +394,30 @@ export const toggleCustomerStatus = async (
     isActive ? 'ACTIVATE_CUSTOMER' : 'DEACTIVATE_CUSTOMER',
     'customers',
     `${isActive ? 'Activated' : 'Deactivated'} customer ${id}`,
+    id,
+    userId,
+    userEmail
+  );
+};
+
+export const deleteCustomer = async (
+  id: string,
+  userId = 'system',
+  userEmail = 'admin@sadiqbookagency.com'
+): Promise<void> => {
+  if (!db || !id) throw new Error('Firestore not initialized');
+
+  const existing = await getCustomerById(id);
+  if (!existing) return;
+
+  const docRef = doc(db, 'customers', id);
+  await deleteDoc(docRef);
+  invalidateCustomerCache();
+
+  await logAuditEvent(
+    'DELETE_CUSTOMER',
+    'customers',
+    `Deleted customer: ${existing.name} (${existing.shopName || id})`,
     id,
     userId,
     userEmail

@@ -61,7 +61,7 @@ service cloud.firestore {
     // -------------------------------------------------------------------------
     match /products/{productId} {
       allow read, create, update: if isStaff();
-      allow delete: if isStoreAdmin();
+      allow delete: if isStaff();
     }
 
     // -------------------------------------------------------------------------
@@ -106,7 +106,7 @@ service cloud.firestore {
     // -------------------------------------------------------------------------
     match /customers/{customerId} {
       allow read, create, update: if isStaff();
-      allow delete: if isStoreAdmin();
+      allow delete: if isStaff();
     }
 
     // -------------------------------------------------------------------------
@@ -136,7 +136,10 @@ service cloud.firestore {
     // 13. SALES & INVOICES
     // -------------------------------------------------------------------------
     match /sales/{saleId} {
-      allow read, create, update: if isStaff();
+      // Allows individual invoice get/verification via scanned QR code or link
+      allow get: if true;
+      allow list: if isStaff();
+      allow create, update: if isStaff();
       allow delete: if isStoreAdmin();
     }
 

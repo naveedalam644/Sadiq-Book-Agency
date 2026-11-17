@@ -1,10 +1,17 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Search,
   Trash2,
   Calendar,
   AlertTriangle,
   Receipt,
+  X,
+  Plus,
+  Maximize2,
+  Minimize2,
+  GraduationCap,
+  BookOpen,
+  Layers,
 } from 'lucide-react';
 import { Modal } from '../common/Modal';
 import { Button } from '../common/Button';
@@ -14,12 +21,11 @@ import type {
   CustomerDiscountDocument,
   SaleDocument,
   AdminCreditOverride,
+  PublisherDocument,
+  SeriesDocument,
+  CategoryDocument,
+  ItemClassification,
 } from '../../types/database';
-import {
-  searchProductsByName,
-  searchProductBySku,
-  type ProductSearchResult,
-} from '../../services/productSearchService';
 import { getCustomerDiscountsPaginated, resolveEffectivePrice } from '../../services/discountService';
 import {
   processSaleTransaction,
@@ -30,6 +36,16 @@ import {
 import { calculateInvoiceDueDate } from '../../services/dueDateService';
 import { formatCurrency } from '../../utils/formatters';
 import { useAuth } from '../../hooks/useAuth';
+import { getActivePublishers } from '../../services/publisherService';
+import { getSeriesByPublisher } from '../../services/seriesService';
+import { getCategories } from '../../services/categoryService';
+import { getProductsPaginated } from '../../services/productService';
+import { STANDARD_CLASSES } from '../../services/syllabusService';
+import {
+  matchesProductSearch,
+  matchesSearchTokens,
+  sortProductsByClassSequence,
+} from '../../utils/purchaseFormHelpers';
 
 export interface CustomerBillModalProps {
   isOpen: boolean;
@@ -65,16 +81,33 @@ export const CustomerBillModal: React.FC<CustomerBillModalProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
-  // Search State
-  const [searchTerm, setSearchTerm] = useState('');
-  const [searchResults, setSearchResults] = useState<ProductSearchResult[]>([]);
-  const [isSearching, setIsSearching] = useState(false);
+  // Filter Mode & Dropdowns State
+  const [filterMode, setFilterMode] = useState<'books' | 'others'>('books');
+  const [publisherFilter, setPublisherFilter] = useState('all');
+  const [seriesFilter, setSeriesFilter] = useState('all');
+  const [classFilter, setClassFilter] = useState('all');
+
+  const [categoryFilter, setCategoryFilter] = useState('all');
+  const [sizeFilter, setSizeFilter] = useState('all');
+  const [sheetFilter, setSheetFilter] = useState('all');
+
+  // Metadata Lists
+  const [publishersList, setPublishersList] = useState<PublisherDocument[]>([]);
+  const [seriesList, setSeriesList] = useState<SeriesDocument[]>([]);
+  const [categoriesList, setCategoriesList] = useState<CategoryDocument[]>([]);
   const [customerDiscounts, setCustomerDiscounts] = useState<CustomerDiscountDocument[]>([]);
+
+  // Products Catalog & Search State
+  const [searchTerm, setSearchTerm] = useState('');
+  const [availableProducts, setAvailableProducts] = useState<ProductDocument[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [isExpandedHeight, setIsExpandedHeight] = useState(false);
+  const [inputQuantities, setInputQuantities] = useState<Record<string, number>>({});
 
   // Over-limit authorization state
   const [overrideReason, setOverrideReason] = useState('');
 
-  // 1. Initialize or prefill Due Date when modal opens or customer/billDate changes
+  // 1. Initialize modal state when opened or customer changes
   useEffect(() => {
     if (isOpen && customer) {
       setBillDate(new Date().toISOString().split('T')[0]);
@@ -84,7 +117,14 @@ export const CustomerBillModal: React.FC<CustomerBillModalProps> = ({
       setNotes('');
       setFormError(null);
       setSearchTerm('');
-      setSearchResults([]);
+      setFilterMode('books');
+      setPublisherFilter('all');
+      setSeriesFilter('all');
+      setClassFilter('all');
+      setCategoryFilter('all');
+      setSizeFilter('all');
+      setSheetFilter('all');
+      setInputQuantities({});
       setOverrideReason('');
 
       // Prefill due date if customer has creditDays configured
@@ -100,17 +140,194 @@ export const CustomerBillModal: React.FC<CustomerBillModalProps> = ({
       getCustomerDiscountsPaginated(customer.id, null, 100)
         .then((res) => setCustomerDiscounts(res.discounts))
         .catch((err) => console.error('Failed to load customer discounts:', err));
+
+      // Fetch active publishers
+      getActivePublishers()
+        .then(setPublishersList)
+        .catch((err) => console.error('Failed to load publishers:', err));
+
+      // Fetch store categories
+      getCategories()
+        .then(setCategoriesList)
+        .catch((err) => console.error('Failed to load categories:', err));
+
+      // Pre-load active products into local pool
+      getProductsPaginated({ status: 'active' }, null, 250)
+        .then((res) => setAvailableProducts(res.products))
+        .catch((err) => console.error('Failed to load catalog products:', err));
     }
   }, [isOpen, customer]);
 
-  // Recalculate automatic default due date when bill date changes (if not manually overridden)
+  // Load series whenever selected publisher changes
+  useEffect(() => {
+    if (publisherFilter && publisherFilter !== 'all') {
+      getSeriesByPublisher(publisherFilter)
+        .then(setSeriesList)
+        .catch((err) => console.error('Failed to load series for publisher:', err));
+    } else {
+      setSeriesList([]);
+    }
+  }, [publisherFilter]);
+
+  // Recalculate automatic default due date when bill date changes
   const creditDays = customer?.creditDays;
   const defaultDueDate = useMemo(() => {
     if (!creditDays || creditDays <= 0) return '';
     return calculateInvoiceDueDate(billDate, creditDays) || '';
   }, [creditDays, billDate]);
 
-  // 2. Financial Totals Calculations
+  // Dynamic Sizes and Sheets from catalog products
+  const dynamicSizes = useMemo(() => {
+    const defaultSizes = ['A4', 'A5', 'Foolscap', 'Large', 'Medium', 'Small'];
+    const fromCatalog = availableProducts
+      .map((p) => p.notebookSize?.trim())
+      .filter(Boolean) as string[];
+    const set = new Set([...defaultSizes, ...fromCatalog]);
+    return Array.from(set).sort();
+  }, [availableProducts]);
+
+  const dynamicSheets = useMemo(() => {
+    const defaultSheets = ['40', '60', '80', '100', '120', '160', '200', '240', '300'];
+    const fromCatalog = availableProducts
+      .map((p) => p.notebookSheets?.trim()?.replace(/[^0-9]/g, ''))
+      .filter(Boolean) as string[];
+    const set = new Set([...defaultSheets, ...fromCatalog]);
+    return Array.from(set).sort((a, b) => Number(a) - Number(b));
+  }, [availableProducts]);
+
+  // 2. Background Firestore Search when filters or query changes
+  useEffect(() => {
+    if (!isOpen) return;
+
+    let isMounted = true;
+    const term = searchTerm.trim();
+
+    const timer = setTimeout(async () => {
+      setIsSearching(true);
+      try {
+        const result = await getProductsPaginated(
+          {
+            status: 'active',
+            searchTerm: term || undefined,
+            publisherId: publisherFilter !== 'all' ? publisherFilter : undefined,
+            seriesId: seriesFilter !== 'all' ? seriesFilter : undefined,
+            targetClass: classFilter !== 'all' ? classFilter : undefined,
+            classification:
+              filterMode === 'books'
+                ? 'book'
+                : categoryFilter !== 'all' && ['notebook', 'register', 'stationery', 'general'].includes(categoryFilter)
+                ? (categoryFilter as ItemClassification)
+                : undefined,
+            categoryId:
+              categoryFilter !== 'all' && !['notebook', 'register', 'stationery', 'general'].includes(categoryFilter)
+                ? categoryFilter
+                : undefined,
+          },
+          null,
+          100
+        );
+
+        if (isMounted && result.products.length > 0) {
+          setAvailableProducts((prev) => {
+            const map = new Map<string, ProductDocument>();
+            prev.forEach((p) => map.set(p.id, p));
+            result.products.forEach((p) => map.set(p.id, p));
+            return Array.from(map.values());
+          });
+        }
+      } catch (err) {
+        console.warn('Background customer bill product lookup failed:', err);
+      } finally {
+        if (isMounted) setIsSearching(false);
+      }
+    }, 250);
+
+    return () => {
+      isMounted = false;
+      clearTimeout(timer);
+    };
+  }, [
+    searchTerm,
+    publisherFilter,
+    seriesFilter,
+    classFilter,
+    categoryFilter,
+    sizeFilter,
+    sheetFilter,
+    filterMode,
+    isOpen,
+  ]);
+
+  // 3. In-memory Filtered Matching Products (Books vs Notebooks/Stationery)
+  const matchingProducts = useMemo(() => {
+    const filtered = availableProducts.filter((p) => {
+      if (filterMode === 'books') {
+        const isBook = p.classification === 'book' || !p.classification;
+        if (!isBook && !searchTerm.trim()) return false;
+        const selectedPub = publishersList.find((pub) => pub.id === publisherFilter);
+        const selectedSer = seriesList.find((ser) => ser.id === seriesFilter);
+        return matchesProductSearch(
+          p,
+          searchTerm,
+          'all',
+          'all',
+          'all',
+          publisherFilter,
+          seriesFilter,
+          classFilter,
+          selectedPub?.name,
+          selectedSer?.name
+        );
+      } else {
+        // Others: Notebook, Register, Stationery, General
+        const isNotBook = p.classification && p.classification !== 'book';
+        if (!isNotBook && !searchTerm.trim()) return false;
+
+        // Text search
+        if (!matchesSearchTokens(p, searchTerm)) return false;
+
+        // Category / Classification
+        if (categoryFilter !== 'all') {
+          const catLower = categoryFilter.toLowerCase();
+          const matchesClass = p.classification?.toLowerCase() === catLower;
+          const matchesCatId = p.categoryId === categoryFilter;
+          const matchesCatName = p.categoryName?.toLowerCase() === catLower;
+          if (!matchesClass && !matchesCatId && !matchesCatName) return false;
+        }
+
+        // Size filter
+        if (sizeFilter !== 'all') {
+          const prodSize = (p.notebookSize || '').trim().toLowerCase();
+          if (prodSize !== sizeFilter.trim().toLowerCase()) return false;
+        }
+
+        // Sheet count filter
+        if (sheetFilter !== 'all') {
+          const prodSheets = (p.notebookSheets || '').trim().toLowerCase().replace(/[^0-9]/g, '');
+          const targetSheets = sheetFilter.trim().toLowerCase().replace(/[^0-9]/g, '');
+          if (prodSheets !== targetSheets) return false;
+        }
+
+        return true;
+      }
+    });
+
+    return sortProductsByClassSequence(filtered);
+  }, [
+    availableProducts,
+    filterMode,
+    searchTerm,
+    publisherFilter,
+    seriesFilter,
+    classFilter,
+    categoryFilter,
+    sizeFilter,
+    sheetFilter,
+    publishersList,
+    seriesList,
+  ]);
+
+  // 4. Financial Totals Calculations
   const subtotal = useMemo(() => {
     return items.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
   }, [items]);
@@ -138,49 +355,20 @@ export const CustomerBillModal: React.FC<CustomerBillModalProps> = ({
   const isOverLimit = creditLimit > 0 && projectedBalance > creditLimit;
   const exceededAmount = isOverLimit ? projectedBalance - creditLimit : 0;
 
-  // 3. Search Products
-  const handleSearch = useCallback(
-    async (text: string) => {
-      setSearchTerm(text);
-      const clean = text.trim();
-      if (!clean || clean.length < 2) {
-        setSearchResults([]);
-        setIsSearching(false);
-        return;
-      }
-
-      setIsSearching(true);
-      try {
-        if (clean.includes('-') || clean.toUpperCase() === clean) {
-          const exact = await searchProductBySku(clean);
-          if (exact) {
-            setSearchResults([exact]);
-            setIsSearching(false);
-            return;
-          }
-        }
-        const res = await searchProductsByName(clean, null);
-        setSearchResults(res.products);
-      } catch (err) {
-        console.error('Failed to search products:', err);
-      } finally {
-        setIsSearching(false);
-      }
-    },
-    []
-  );
-
-  // 4. Add Product to Invoice
-  const handleAddProduct = (product: ProductSearchResult) => {
+  // 5. Add Product to Invoice (with quantity & customer pricing)
+  const handleSelectProduct = (product: ProductDocument, quantityToAdd = 1) => {
     if (!customer) return;
 
-    // Check if already in items
+    const qty = Math.max(1, Number(quantityToAdd) || 1);
     const existingIndex = items.findIndex((i) => i.product.id === product.id);
+
     if (existingIndex >= 0) {
       const existing = items[existingIndex];
-      const newQty = existing.quantity + 1;
-      if (newQty > product.currentStock) {
-        alert(`Cannot add more: physical stock is limited to ${product.currentStock} units.`);
+      const newQty = existing.quantity + qty;
+      if (product.currentStock !== undefined && newQty > product.currentStock) {
+        alert(
+          `Cannot add ${qty} more: physical stock is limited to ${product.currentStock} units (already have ${existing.quantity} in bill).`
+        );
         return;
       }
       const updated = [...items];
@@ -190,13 +378,16 @@ export const CustomerBillModal: React.FC<CustomerBillModalProps> = ({
         lineTotal: Math.round(existing.effectivePrice * newQty * 100) / 100,
       };
       setItems(updated);
-      setSearchTerm('');
-      setSearchResults([]);
       return;
     }
 
-    if (product.currentStock <= 0) {
-      alert(`Product "${product.title}" is out of physical stock.`);
+    if (product.currentStock !== undefined && product.currentStock <= 0) {
+      alert(`Product "${product.title}" is currently out of physical stock.`);
+      return;
+    }
+
+    if (product.currentStock !== undefined && qty > product.currentStock) {
+      alert(`Cannot add ${qty} units: physical stock is only ${product.currentStock} units.`);
       return;
     }
 
@@ -213,16 +404,20 @@ export const CustomerBillModal: React.FC<CustomerBillModalProps> = ({
       ...prev,
       {
         product,
-        quantity: 1,
+        quantity: qty,
         unitPrice: basePrice,
         discountRate: discRate,
         effectivePrice: effPrice,
-        lineTotal: effPrice,
+        lineTotal: Math.round(effPrice * qty * 100) / 100,
       },
     ]);
+  };
 
-    setSearchTerm('');
-    setSearchResults([]);
+  const handleAddAllMatching = () => {
+    matchingProducts.forEach((p) => {
+      const qty = Number(inputQuantities[p.id]) || 1;
+      handleSelectProduct(p, qty);
+    });
   };
 
   const handleUpdateQuantity = (index: number, newQty: number) => {
@@ -232,7 +427,7 @@ export const CustomerBillModal: React.FC<CustomerBillModalProps> = ({
     }
 
     const item = items[index];
-    if (newQty > item.product.currentStock) {
+    if (item.product.currentStock !== undefined && newQty > item.product.currentStock) {
       alert(`Cannot exceed available physical stock (${item.product.currentStock} units).`);
       return;
     }
@@ -267,7 +462,7 @@ export const CustomerBillModal: React.FC<CustomerBillModalProps> = ({
     setItems((prev) => prev.filter((_, idx) => idx !== index));
   };
 
-  // 5. Submit Bill Transaction
+  // 6. Submit Bill Transaction
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError(null);
@@ -418,61 +613,410 @@ export const CustomerBillModal: React.FC<CustomerBillModalProps> = ({
           </div>
         </div>
 
-        {/* Product Search & Selector */}
-        <div className="space-y-2">
-          <label className="block font-bold text-slate-700">Add Products to Bill</label>
+        {/* ------------------------------------------------------------------ */}
+        {/* ENHANCED PRODUCT FINDER WITH DUAL HIERARCHY FILTERS               */}
+        {/* ------------------------------------------------------------------ */}
+        <div className="space-y-3 bg-slate-50/70 p-3 rounded-2xl border border-slate-200">
+          {/* Mode Switcher Tabs */}
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <div className="flex items-center gap-1.5 p-1 bg-slate-200/80 rounded-xl">
+              <button
+                type="button"
+                onClick={() => {
+                  setFilterMode('books');
+                  setSearchTerm('');
+                }}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                  filterMode === 'books'
+                    ? 'bg-[#071F49] text-[#F5B51B] shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <BookOpen className="w-3.5 h-3.5" />
+                <span>📚 Books (Publisher &rarr; Series &rarr; Class)</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setFilterMode('others');
+                  setSearchTerm('');
+                }}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                  filterMode === 'others'
+                    ? 'bg-[#071F49] text-[#F5B51B] shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <Layers className="w-3.5 h-3.5" />
+                <span>📒 Notebook & Stationery (Category &rarr; Size &rarr; Sheet)</span>
+              </button>
+            </div>
+
+            <div className="text-[11px] font-semibold text-slate-500">
+              {matchingProducts.length} items found in catalog
+            </div>
+          </div>
+
+          {/* Search Input Bar */}
           <div className="relative">
             <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
             <input
               type="text"
               value={searchTerm}
-              onChange={(e) => handleSearch(e.target.value)}
-              placeholder="Search by Title or SKU (e.g. BK-SIN-001, Progressive English)..."
-              className="w-full pl-9 pr-3 py-2 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#071F49]"
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder={
+                filterMode === 'books'
+                  ? 'Search books by title, SKU, barcode, publisher...'
+                  : 'Search notebooks, registers, stationery by title, size, sheets, SKU...'
+              }
+              className="w-full pl-9 pr-8 py-2 text-xs bg-white border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#071F49]"
             />
-            {isSearching && (
-              <div className="absolute right-3 top-2.5">
-                <div className="w-4 h-4 border-2 border-slate-300 border-t-[#071F49] rounded-full animate-spin" />
-              </div>
+            {searchTerm && (
+              <button
+                type="button"
+                onClick={() => setSearchTerm('')}
+                className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600 cursor-pointer"
+                title="Clear search"
+              >
+                <X className="w-4 h-4" />
+              </button>
             )}
           </div>
 
-          {/* Search Results Dropdown */}
-          {searchResults.length > 0 && (
-            <div className="bg-white border border-slate-200 rounded-xl shadow-lg max-h-48 overflow-y-auto divide-y divide-slate-100 z-10">
-              {searchResults.map((prod) => (
-                <div
-                  key={prod.id}
-                  onClick={() => handleAddProduct(prod)}
-                  className="p-2.5 hover:bg-slate-50 cursor-pointer flex items-center justify-between"
+          {/* FLOW 1: Books Mode -> Publisher > Series > Class */}
+          {filterMode === 'books' ? (
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 bg-blue-50/60 p-2.5 rounded-xl border border-blue-200">
+              {/* 1. Publisher */}
+              <div>
+                <label className="block text-[10px] font-bold text-[#071F49] uppercase tracking-wider mb-1 flex items-center gap-1">
+                  <span className="w-3.5 h-3.5 rounded-full bg-[#071F49] text-[#F5B51B] flex items-center justify-center text-[9px] font-black">1</span>
+                  <span>Publisher</span>
+                </label>
+                <select
+                  value={publisherFilter}
+                  onChange={(e) => {
+                    setPublisherFilter(e.target.value);
+                    setSeriesFilter('all');
+                  }}
+                  className="w-full text-xs bg-white border border-slate-300 rounded-lg py-1.5 px-2 text-slate-800 font-medium focus:outline-none focus:border-[#071F49]"
                 >
-                  <div>
-                    <div className="font-bold text-slate-900">{prod.title}</div>
-                    <div className="text-[11px] text-slate-500 font-mono">
-                      {prod.sku} • {prod.publisherName || 'Unknown'} • Stock: {prod.currentStock}
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <div className="font-bold text-slate-800">
-                      PKR {Number(prod.wholesalePrice || prod.retailPrice).toFixed(2)}
-                    </div>
-                    <button
-                      type="button"
-                      className="px-2 py-0.5 bg-[#071F49] text-white rounded text-[10px] font-bold"
-                    >
-                      + Add
-                    </button>
-                  </div>
-                </div>
-              ))}
+                  <option value="all">All Publishers</option>
+                  {publishersList.map((pub) => (
+                    <option key={pub.id} value={pub.id}>
+                      {pub.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* 2. Series */}
+              <div>
+                <label className="block text-[10px] font-bold text-[#071F49] uppercase tracking-wider mb-1 flex items-center gap-1">
+                  <span className="w-3.5 h-3.5 rounded-full bg-[#071F49] text-[#F5B51B] flex items-center justify-center text-[9px] font-black">2</span>
+                  <span>Series</span>
+                </label>
+                <select
+                  value={seriesFilter}
+                  onChange={(e) => setSeriesFilter(e.target.value)}
+                  disabled={publisherFilter === 'all'}
+                  className="w-full text-xs bg-white border border-slate-300 rounded-lg py-1.5 px-2 text-slate-800 font-medium focus:outline-none focus:border-[#071F49] disabled:bg-slate-100 disabled:text-slate-400"
+                >
+                  <option value="all">
+                    {publisherFilter === 'all'
+                      ? 'Select Publisher first'
+                      : seriesList.length === 0
+                      ? 'No Series (All Titles)'
+                      : 'All Series'}
+                  </option>
+                  {seriesList.map((ser) => (
+                    <option key={ser.id} value={ser.id}>
+                      {ser.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* 3. Class */}
+              <div>
+                <label className="block text-[10px] font-bold text-[#071F49] uppercase tracking-wider mb-1 flex items-center gap-1">
+                  <span className="w-3.5 h-3.5 rounded-full bg-[#071F49] text-[#F5B51B] flex items-center justify-center text-[9px] font-black">3</span>
+                  <span>Class</span>
+                </label>
+                <select
+                  value={classFilter}
+                  onChange={(e) => setClassFilter(e.target.value)}
+                  className="w-full text-xs bg-white border border-slate-300 rounded-lg py-1.5 px-2 text-slate-800 font-medium focus:outline-none focus:border-[#071F49]"
+                >
+                  <option value="all">All Classes</option>
+                  {STANDARD_CLASSES.map((cls) => (
+                    <option key={cls} value={cls}>
+                      {cls}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          ) : (
+            /* FLOW 2: Notebook, Register & Stationery -> Category > Size > Sheet */
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 bg-amber-50/60 p-2.5 rounded-xl border border-amber-200">
+              {/* 1. Category */}
+              <div>
+                <label className="block text-[10px] font-bold text-amber-950 uppercase tracking-wider mb-1 flex items-center gap-1">
+                  <span className="w-3.5 h-3.5 rounded-full bg-amber-700 text-white flex items-center justify-center text-[9px] font-black">1</span>
+                  <span>Category / Type</span>
+                </label>
+                <select
+                  value={categoryFilter}
+                  onChange={(e) => setCategoryFilter(e.target.value)}
+                  className="w-full text-xs bg-white border border-slate-300 rounded-lg py-1.5 px-2 text-slate-800 font-medium focus:outline-none focus:border-amber-700"
+                >
+                  <option value="all">All Non-Book Items</option>
+                  <option value="register">Registers</option>
+                  <option value="notebook">Notebooks</option>
+                  <option value="stationery">Stationery & Writing</option>
+                  <option value="general">General Items</option>
+                  {categoriesList.map((cat) => (
+                    <option key={cat.id} value={cat.id}>
+                      {cat.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* 2. Size */}
+              <div>
+                <label className="block text-[10px] font-bold text-amber-950 uppercase tracking-wider mb-1 flex items-center gap-1">
+                  <span className="w-3.5 h-3.5 rounded-full bg-amber-700 text-white flex items-center justify-center text-[9px] font-black">2</span>
+                  <span>Size</span>
+                </label>
+                <select
+                  value={sizeFilter}
+                  onChange={(e) => setSizeFilter(e.target.value)}
+                  className="w-full text-xs bg-white border border-slate-300 rounded-lg py-1.5 px-2 text-slate-800 font-medium focus:outline-none focus:border-amber-700"
+                >
+                  <option value="all">All Sizes</option>
+                  {dynamicSizes.map((sz) => (
+                    <option key={sz} value={sz}>
+                      {sz}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* 3. Sheet Count */}
+              <div>
+                <label className="block text-[10px] font-bold text-amber-950 uppercase tracking-wider mb-1 flex items-center gap-1">
+                  <span className="w-3.5 h-3.5 rounded-full bg-amber-700 text-white flex items-center justify-center text-[9px] font-black">3</span>
+                  <span>Sheet Count</span>
+                </label>
+                <select
+                  value={sheetFilter}
+                  onChange={(e) => setSheetFilter(e.target.value)}
+                  className="w-full text-xs bg-white border border-slate-300 rounded-lg py-1.5 px-2 text-slate-800 font-medium focus:outline-none focus:border-amber-700"
+                >
+                  <option value="all">All Sheet Counts</option>
+                  {dynamicSheets.map((sh) => (
+                    <option key={sh} value={sh}>
+                      {sh} Sheets
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
           )}
+
+          {/* Matching Products Drawer */}
+          <div className="border border-slate-200 rounded-xl bg-white overflow-hidden shadow-2xs">
+            <div className="bg-slate-100 px-3 py-2 border-b border-slate-200 flex items-center justify-between text-xs font-semibold text-slate-700 flex-wrap gap-2">
+              <div className="flex items-center gap-2">
+                <span className="font-bold text-[#071F49]">
+                  Matching Products ({matchingProducts.length})
+                </span>
+                {isSearching && (
+                  <div className="w-3.5 h-3.5 border-2 border-slate-300 border-t-[#071F49] rounded-full animate-spin" />
+                )}
+              </div>
+
+              <div className="flex items-center gap-2">
+                {matchingProducts.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={handleAddAllMatching}
+                    className="text-[11px] font-bold text-[#071F49] bg-[#F5B51B] hover:bg-[#F8CE4E] px-2.5 py-1 rounded-md transition shadow-2xs cursor-pointer flex items-center gap-1 active:scale-95"
+                    title="Add all matching items to bill with specified quantities"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Add All ({matchingProducts.length})</span>
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => setIsExpandedHeight(!isExpandedHeight)}
+                  className="text-[11px] font-semibold text-slate-600 hover:text-[#071F49] bg-white border border-slate-300 px-2 py-1 rounded-md transition cursor-pointer flex items-center gap-1"
+                >
+                  {isExpandedHeight ? (
+                    <>
+                      <Minimize2 className="w-3 h-3" />
+                      <span>Compact</span>
+                    </>
+                  ) : (
+                    <>
+                      <Maximize2 className="w-3 h-3" />
+                      <span>Expand</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+
+            <div
+              className={`${
+                isExpandedHeight ? 'max-h-80' : 'max-h-48'
+              } overflow-y-auto divide-y divide-slate-100`}
+            >
+              {matchingProducts.length === 0 ? (
+                <div className="p-4 text-center text-slate-400 text-xs">
+                  No products match the selected filters or search terms.
+                </div>
+              ) : (
+                matchingProducts.map((prod) => {
+                  const existingItem = items.find((i) => i.product.id === prod.id);
+                  const isAlreadyAdded = Boolean(existingItem);
+                  const existingQty = existingItem?.quantity || 0;
+
+                  // Resolve pricing for customer preview
+                  const customDisc = customerDiscounts.find((d) => d.productId === prod.id) || null;
+                  const priceRes = resolveEffectivePrice(prod, customer, customDisc);
+                  const basePrice = Number(prod.retailPrice) || priceRes.basePrice;
+                  const discRate = priceRes.discountRatePercent;
+                  const unitDiscount = Math.round(basePrice * (discRate / 100) * 100) / 100;
+                  const effPrice = Math.max(0, Math.round((basePrice - unitDiscount) * 100) / 100);
+
+                  const resolvedClass =
+                    prod.targetClass ||
+                    prod.className ||
+                    (prod.edition && /class|grade|prep|nursery|kg/i.test(prod.edition) ? prod.edition : undefined);
+
+                  const enteredQty = inputQuantities[prod.id] ?? 1;
+
+                  return (
+                    <div
+                      key={prod.id}
+                      className="p-2.5 hover:bg-blue-50/40 flex items-center justify-between gap-3 transition"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="font-bold text-slate-900 truncate">{prod.title}</span>
+                          <span className="font-mono text-[10px] bg-slate-100 text-slate-600 px-1 rounded border border-slate-200">
+                            {prod.sku}
+                          </span>
+                          {resolvedClass && (
+                            <span className="text-[10px] bg-emerald-50 text-emerald-800 px-1.5 py-0.2 rounded font-bold border border-emerald-200 flex items-center gap-0.5">
+                              <GraduationCap className="w-2.5 h-2.5 text-emerald-600" />
+                              <span>{resolvedClass}</span>
+                            </span>
+                          )}
+                          {prod.seriesName && (
+                            <span className="text-[10px] bg-blue-50 text-blue-800 px-1.5 py-0.2 rounded font-medium border border-blue-200">
+                              {prod.seriesName}
+                            </span>
+                          )}
+                          {prod.classification && prod.classification !== 'book' && (
+                            <span className="text-[10px] bg-amber-50 text-amber-800 px-1.5 py-0.2 rounded font-medium border border-amber-200 uppercase">
+                              {prod.classification}
+                            </span>
+                          )}
+                          {(prod.notebookSize || prod.notebookSheets) && (
+                            <span className="text-[10px] bg-indigo-50 text-indigo-700 px-1.5 py-0.2 rounded font-medium border border-indigo-200">
+                              {[prod.notebookSize, prod.notebookSheets ? `${prod.notebookSheets} Sh` : ''].filter(Boolean).join(' • ')}
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="flex items-center gap-2 text-[11px] text-slate-500 mt-0.5 flex-wrap">
+                          {prod.publisherName && (
+                            <span>Publisher: <strong className="text-slate-700">{prod.publisherName}</strong></span>
+                          )}
+                          <span>•</span>
+                          <span>
+                            Stock:{' '}
+                            <strong
+                              className={
+                                (prod.currentStock || 0) > 0 ? 'text-emerald-700 font-bold' : 'text-rose-600 font-bold'
+                              }
+                            >
+                              {prod.currentStock || 0} pcs
+                            </strong>
+                          </span>
+                          <span>•</span>
+                          <span>MRP: PKR {basePrice.toFixed(2)}</span>
+                          {discRate > 0 && (
+                            <span className="text-amber-800 font-semibold font-mono">
+                              (Disc: {discRate}%)
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Add Action Controls */}
+                      <div className="flex items-center gap-2 shrink-0">
+                        <div className="text-right">
+                          <div className="font-bold text-[#071F49] font-mono text-xs">
+                            PKR {effPrice.toFixed(2)}
+                          </div>
+                          <div className="text-[9px] text-slate-400">Net Rate</div>
+                        </div>
+
+                        {/* Quantity input box */}
+                        <div className="flex items-center gap-1">
+                          <input
+                            type="number"
+                            min="1"
+                            max={prod.currentStock || 9999}
+                            value={enteredQty}
+                            onChange={(e) => {
+                              const val = Math.max(1, parseInt(e.target.value, 10) || 1);
+                              setInputQuantities((prev) => ({ ...prev, [prod.id]: val }));
+                            }}
+                            className="w-12 text-center text-xs border border-slate-300 rounded px-1 py-1 font-bold focus:ring-1 focus:ring-[#071F49] focus:outline-none"
+                            title="Direct quantity to add"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => handleSelectProduct(prod, enteredQty)}
+                            disabled={(prod.currentStock || 0) <= 0}
+                            className={`px-2.5 py-1 rounded text-[11px] font-bold transition flex items-center gap-1 cursor-pointer ${
+                              isAlreadyAdded
+                                ? 'bg-emerald-700 text-white hover:bg-emerald-800'
+                                : 'bg-[#071F49] text-white hover:bg-[#0c2f6d]'
+                            } disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed`}
+                          >
+                            <Plus className="w-3 h-3" />
+                            <span>{isAlreadyAdded ? `Added (${existingQty})` : 'Add'}</span>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
         </div>
 
         {/* Selected Line Items Table */}
         <div className="border border-slate-200 rounded-xl overflow-hidden bg-white shadow-xs">
+          <div className="bg-slate-100/90 px-3 py-1.5 border-b border-slate-200 flex justify-between items-center text-xs font-bold text-slate-700">
+            <span>Bill Line Items ({items.length})</span>
+            <span className="font-mono text-[11px] text-slate-500">
+              Total Units: {items.reduce((s, i) => s + i.quantity, 0)}
+            </span>
+          </div>
+
           <table className="w-full text-left text-xs">
-            <thead className="bg-slate-100 uppercase font-semibold text-slate-600 border-b border-slate-200">
+            <thead className="bg-slate-50 uppercase font-semibold text-slate-600 border-b border-slate-200 text-[10px]">
               <tr>
                 <th className="px-3 py-2">Item</th>
                 <th className="px-3 py-2 text-center">Qty</th>
@@ -488,7 +1032,7 @@ export const CustomerBillModal: React.FC<CustomerBillModalProps> = ({
               {items.length === 0 ? (
                 <tr>
                   <td colSpan={8} className="text-center py-6 text-slate-400">
-                    No products added to this invoice yet. Use the search bar above to add books or stationery.
+                    No products added to this bill yet. Use the filters and search drawer above to add books or stationery.
                   </td>
                 </tr>
               ) : (
@@ -540,6 +1084,7 @@ export const CustomerBillModal: React.FC<CustomerBillModalProps> = ({
                           type="button"
                           onClick={() => handleRemoveItem(idx)}
                           className="p-1 text-slate-400 hover:text-rose-600 transition"
+                          title="Remove item"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
@@ -634,9 +1179,7 @@ export const CustomerBillModal: React.FC<CustomerBillModalProps> = ({
           </div>
         </div>
 
-        {/* ------------------------------------------------------------------ */}
-        {/* DUE DATE SELECTION (PRIMARY REQUIREMENT)                            */}
-        {/* ------------------------------------------------------------------ */}
+        {/* DUE DATE SELECTION */}
         {(balanceAddedToCredit > 0 || paymentMethod === 'credit') && (
           <div className="p-4 bg-amber-50/70 border border-amber-300 rounded-xl space-y-2">
             <div className="flex items-center justify-between">

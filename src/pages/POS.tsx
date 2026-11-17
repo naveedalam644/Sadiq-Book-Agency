@@ -1403,14 +1403,14 @@ export const POS: React.FC = () => {
                         ) : (
                           <>
                             <div className="text-sm font-black text-amber-900">
-                              {product.lastSoldPrice
-                                ? `PKR ${product.lastSoldPrice}`
-                                : product.retailPrice
+                              {product.retailPrice
                                 ? `PKR ${product.retailPrice}`
+                                : product.lastSoldPrice
+                                ? `PKR ${product.lastSoldPrice}`
                                 : 'Set at POS'}
                             </div>
                             <div className="text-[10px] text-slate-500 font-medium">
-                              {product.lastSoldPrice ? 'Last POS Rate' : 'Open Selling Rate'}
+                              {product.retailPrice ? 'Default Sale Rate' : product.lastSoldPrice ? 'Last POS Rate' : 'Open Selling Rate'}
                             </div>
                           </>
                         )}

@@ -73,7 +73,7 @@ export const resolveEffectivePrice = (
   // 0. Non-Book Stationery Exemption:
   // Stationery items are strictly excluded from book percentage discounts & automatic store discounts.
   if (!isBook) {
-    const defaultPrice = product.lastSoldPrice || standardRetail || 0;
+    const defaultPrice = standardRetail > 0 ? standardRetail : (product.lastSoldPrice || 0);
     if (customDiscount && customDiscount.discountType === 'fixed_rate') {
       const fixedRate = Math.max(0, Number(customDiscount.discountValue) || 0);
       return {
