@@ -221,6 +221,8 @@ export const POS: React.FC = () => {
   // 3. Payment States
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'bank_transfer' | 'credit'>('cash');
   const [cashTendered, setCashTendered] = useState<string>('');
+  const [isManualCashTendered, setIsManualCashTendered] = useState(false);
+  const prevGrandTotalRef = useRef<number>(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submissionError, setSubmissionError] = useState<string | null>(null);
 
@@ -843,14 +845,32 @@ export const POS: React.FC = () => {
   // ---------------------------------------------------------------------------------
   const numericTendered = Math.max(0, Number(cashTendered) || 0);
 
-  // Set default tendered to exact grandTotal when grandTotal changes (for cash mode)
+  // Dynamically sync cashTendered to grandTotal for cash payments,
+  // preventing stale previous amounts when adding/updating cart products.
   useEffect(() => {
-    if (paymentMethod === 'cash' && grandTotal > 0 && !cashTendered) {
-      setCashTendered(String(grandTotal));
-    } else if (paymentMethod === 'credit' && cashTendered === String(grandTotal)) {
-      setCashTendered('0');
+    const prevTotal = prevGrandTotalRef.current;
+    prevGrandTotalRef.current = grandTotal;
+
+    if (paymentMethod === 'cash') {
+      if (grandTotal <= 0) {
+        setCashTendered('');
+        setIsManualCashTendered(false);
+        return;
+      }
+
+      // If user hasn't explicitly entered a custom cash amount,
+      // OR if cashTendered was empty or exactly tracking previous grandTotal,
+      // auto-update cashTendered to match the new grandTotal.
+      if (!isManualCashTendered || !cashTendered || cashTendered === String(prevTotal) || cashTendered === '0') {
+        setCashTendered(String(grandTotal));
+        setIsManualCashTendered(false);
+      }
+    } else if (paymentMethod === 'credit') {
+      if (cashTendered === String(prevTotal) || !cashTendered) {
+        setCashTendered('0');
+      }
     }
-  }, [grandTotal, paymentMethod, cashTendered]);
+  }, [grandTotal, paymentMethod]);
 
   const creditCashPaid = paymentMethod === 'credit' ? Math.min(grandTotal, numericTendered) : 0;
   const balanceAddedToCredit =
@@ -897,15 +917,12 @@ export const POS: React.FC = () => {
       }
     }
 
-    // Require due date if adding to credit for registered customer accounts
+    // Optional payment due date validation for credit sales (not mandatory)
     const isCredit = balanceAddedToCredit > 0 || paymentMethod === 'credit';
-    if (isCredit && customerType !== 'parchon') {
-      if (!customDueDate || !customDueDate.trim()) {
-        setSubmissionError(
-          customer?.creditDays
-            ? 'A valid payment due date is required for this credit sale.'
-            : 'This customer has no credit terms configured on their profile. Please select an approved payment due date before completing the credit sale.'
-        );
+    if (isCredit && customDueDate && customDueDate.trim()) {
+      const today = new Date().toISOString().split('T')[0];
+      if (customDueDate < today) {
+        setSubmissionError(`Payment due date (${customDueDate}) cannot precede today's date.`);
         return;
       }
     }
@@ -939,6 +956,7 @@ export const POS: React.FC = () => {
         confirmCheckoutSuccess();
         setGlobalDiscountValue('');
         setCashTendered('');
+        setIsManualCashTendered(false);
         setActiveAdminOverride(undefined);
       });
     } catch (err: any) {
@@ -2024,9 +2042,8 @@ export const POS: React.FC = () => {
                 type="button"
                 onClick={() => {
                   setPaymentMethod('cash');
-                  if (!cashTendered || cashTendered === '0') {
-                    setCashTendered(String(grandTotal));
-                  }
+                  setIsManualCashTendered(false);
+                  setCashTendered(grandTotal > 0 ? String(grandTotal) : '');
                 }}
                 className={`flex-1 py-1 rounded flex items-center justify-center gap-1 transition-colors ${
                   paymentMethod === 'cash' ? 'bg-[#071F49] text-white shadow-2xs' : 'text-slate-600 hover:bg-slate-200'
@@ -2040,6 +2057,7 @@ export const POS: React.FC = () => {
                 type="button"
                 onClick={() => {
                   setPaymentMethod('bank_transfer');
+                  setIsManualCashTendered(false);
                   setCashTendered('');
                 }}
                 className={`flex-1 py-1 rounded flex items-center justify-center gap-1 transition-colors ${
@@ -2054,7 +2072,11 @@ export const POS: React.FC = () => {
 
               <button
                 type="button"
-                onClick={() => setPaymentMethod('credit')}
+                onClick={() => {
+                  setPaymentMethod('credit');
+                  setIsManualCashTendered(false);
+                  setCashTendered('0');
+                }}
                 className={`flex-1 py-1 rounded flex items-center justify-center gap-1 transition-colors ${
                   paymentMethod === 'credit'
                     ? 'bg-amber-600 text-white shadow-2xs'
@@ -2076,7 +2098,10 @@ export const POS: React.FC = () => {
                       type="number"
                       min="0"
                       value={cashTendered}
-                      onChange={(e) => setCashTendered(e.target.value)}
+                      onChange={(e) => {
+                        setIsManualCashTendered(true);
+                        setCashTendered(e.target.value);
+                      }}
                       placeholder="0"
                       className="w-24 text-right font-black text-xs border border-slate-300 rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-[#071F49] bg-white h-6"
                     />
@@ -2088,7 +2113,10 @@ export const POS: React.FC = () => {
                       <button
                         key={denom}
                         type="button"
-                        onClick={() => setCashTendered(String(denom))}
+                        onClick={() => {
+                          setIsManualCashTendered(true);
+                          setCashTendered(String(denom));
+                        }}
                         className="px-1.5 py-0.5 bg-white border border-slate-200 rounded text-[9.5px] font-bold text-slate-700 hover:bg-slate-100"
                       >
                         +{denom}
@@ -2096,7 +2124,10 @@ export const POS: React.FC = () => {
                     ))}
                     <button
                       type="button"
-                      onClick={() => setCashTendered(String(grandTotal))}
+                      onClick={() => {
+                        setIsManualCashTendered(false);
+                        setCashTendered(String(grandTotal));
+                      }}
                       className="px-1.5 py-0.5 bg-[#F5B51B] text-slate-900 rounded text-[9.5px] font-black hover:bg-[#e0a415]"
                     >
                       Exact
@@ -2124,7 +2155,10 @@ export const POS: React.FC = () => {
                       type="number"
                       min="0"
                       value={cashTendered}
-                      onChange={(e) => setCashTendered(e.target.value)}
+                      onChange={(e) => {
+                        setIsManualCashTendered(true);
+                        setCashTendered(e.target.value);
+                      }}
                       placeholder="0"
                       className="w-24 text-right font-black text-xs border border-amber-300 rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-amber-600 bg-white h-6"
                     />
@@ -2134,7 +2168,10 @@ export const POS: React.FC = () => {
                   <div className="flex gap-1 items-center flex-wrap">
                     <button
                       type="button"
-                      onClick={() => setCashTendered('0')}
+                      onClick={() => {
+                        setIsManualCashTendered(true);
+                        setCashTendered('0');
+                      }}
                       className={`px-1.5 py-0.5 border rounded text-[9.5px] font-bold transition cursor-pointer ${
                         numericTendered === 0
                           ? 'bg-amber-800 text-white border-amber-900 shadow-2xs'
@@ -2148,7 +2185,10 @@ export const POS: React.FC = () => {
                       <button
                         key={denom}
                         type="button"
-                        onClick={() => setCashTendered(String(denom))}
+                        onClick={() => {
+                          setIsManualCashTendered(true);
+                          setCashTendered(String(denom));
+                        }}
                         className="px-1.5 py-0.5 bg-white border border-amber-200 rounded text-[9.5px] font-bold text-slate-700 hover:bg-amber-100 cursor-pointer"
                       >
                         +{denom}
@@ -2156,7 +2196,10 @@ export const POS: React.FC = () => {
                     ))}
                     <button
                       type="button"
-                      onClick={() => setCashTendered(String(grandTotal))}
+                      onClick={() => {
+                        setIsManualCashTendered(false);
+                        setCashTendered(String(grandTotal));
+                      }}
                       className="px-1.5 py-0.5 bg-[#F5B51B] text-slate-900 rounded text-[9.5px] font-black hover:bg-[#e0a415] cursor-pointer"
                       title="Customer pays full bill in cash right now"
                     >
@@ -2216,8 +2259,8 @@ export const POS: React.FC = () => {
                           Terms: {customer.creditDays}d
                         </span>
                       ) : (
-                        <span className="text-[9.5px] font-bold text-red-600">
-                          * Required
+                        <span className="text-[9.5px] font-medium text-slate-500">
+                          (Optional)
                         </span>
                       )}
                     </div>
@@ -2227,7 +2270,6 @@ export const POS: React.FC = () => {
                       min={new Date().toISOString().split('T')[0]}
                       value={customDueDate}
                       onChange={(e) => setCustomDueDate(e.target.value)}
-                      required
                       className="w-full bg-white border border-amber-300 rounded px-2 py-1 text-xs font-bold text-slate-900 focus:outline-none focus:ring-1 focus:ring-[#071F49] h-6"
                     />
 

@@ -477,18 +477,9 @@ export const CustomerBillModal: React.FC<CustomerBillModalProps> = ({
       return;
     }
 
-    // STRICT DUE DATE REQUIREMENT FOR CREDIT BILLS
+    // PAYMENT DUE DATE VALIDATION (OPTIONAL)
     const isCredit = balanceAddedToCredit > 0 || paymentMethod === 'credit';
-    if (isCredit) {
-      if (!dueDate || !dueDate.trim()) {
-        setFormError(
-          customer.creditDays
-            ? 'A valid payment due date is required. Please select a deadline.'
-            : 'This customer has no configured credit days. You must specify an approved payment due date before saving a credit bill.'
-        );
-        return;
-      }
-
+    if (isCredit && dueDate && dueDate.trim()) {
       if (dueDate < billDate) {
         setFormError(`Payment due date (${dueDate}) cannot precede the bill date (${billDate}).`);
         return;
@@ -1186,7 +1177,7 @@ export const CustomerBillModal: React.FC<CustomerBillModalProps> = ({
               <div className="flex items-center gap-2">
                 <Calendar className="w-4 h-4 text-amber-700" />
                 <label className="font-bold text-slate-900">
-                  Payment Due Date <span className="text-red-600">*</span>
+                  Payment Due Date <span className="text-slate-500 font-normal text-xs">(Optional)</span>
                 </label>
               </div>
 
@@ -1195,8 +1186,8 @@ export const CustomerBillModal: React.FC<CustomerBillModalProps> = ({
                   Customer Term: {customer.creditDays} Days
                 </span>
               ) : (
-                <span className="text-[11px] font-bold text-rose-700 bg-rose-100 px-2 py-0.5 rounded-full border border-rose-300">
-                  * Unconfigured Customer Terms (Date Required)
+                <span className="text-[11px] font-medium text-slate-600 bg-slate-100 px-2 py-0.5 rounded-full border border-slate-300">
+                  No Default Terms (Optional)
                 </span>
               )}
             </div>
@@ -1208,7 +1199,6 @@ export const CustomerBillModal: React.FC<CustomerBillModalProps> = ({
                   min={billDate}
                   value={dueDate}
                   onChange={(e) => setDueDate(e.target.value)}
-                  required
                   className="w-full bg-white border border-amber-400 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#071F49]"
                 />
               </div>
@@ -1227,8 +1217,8 @@ export const CustomerBillModal: React.FC<CustomerBillModalProps> = ({
                     ✓ Explicit admin deadline selected ({dueDate}).
                   </p>
                 ) : (
-                  <p className="text-rose-700 font-bold">
-                    ⚠️ Please specify an approved payment due date for this credit bill.
+                  <p className="text-slate-500 text-[11px]">
+                    ℹ️ Optional: Leave blank if no specific payment deadline is set.
                   </p>
                 )}
               </div>

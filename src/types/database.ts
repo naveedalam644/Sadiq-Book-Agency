@@ -376,6 +376,10 @@ export interface SaleDocument {
   creditDaysSnapshot?: number; // Snapshot of customer's credit term days at sale creation
   dueDateOverride?: InvoiceDueDateOverride; // Admin manual override record
   notes?: string;
+  returnStatus?: 'full' | 'partial';
+  totalReturnedAmount?: number;
+  lastReturnNo?: string;
+  returnedAt?: string;
   createdAt: string;
   updatedAt: string;
 }

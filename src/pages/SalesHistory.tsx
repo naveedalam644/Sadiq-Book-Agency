@@ -17,6 +17,7 @@ import { WhatsAppIcon } from '../components/common/WhatsAppIcon';
 import {
   getSalesHistoryPaginated,
   getSaleReturnsForSale,
+  getSaleReturnSummariesForInvoices,
   processSaleReturnTransaction,
   type SalesHistoryFilters,
 } from '../services/saleHistoryService';
@@ -26,6 +27,7 @@ import { EditDueDateModal } from '../components/sales/EditDueDateModal';
 import type {
   SaleDocument,
   SaleReturnDocument,
+  SaleReturnSummaryDocument,
   CustomerDocument,
   ReturnItemCondition,
   CustomerType,
@@ -60,6 +62,7 @@ export const SalesHistory: React.FC = () => {
   const [dueDateSale, setDueDateSale] = useState<SaleDocument | null>(null);
 
   // Return Workflow State
+  const [returnSummariesMap, setReturnSummariesMap] = useState<Record<string, SaleReturnSummaryDocument>>({});
   const [isReturnModalOpen, setIsReturnModalOpen] = useState(false);
   const [returnSale, setReturnSale] = useState<SaleDocument | null>(null);
   const [returnCustomer, setReturnCustomer] = useState<CustomerDocument | null>(null);
@@ -131,6 +134,18 @@ export const SalesHistory: React.FC = () => {
       setSales((prev) => (isNew ? res.sales : [...prev, ...res.sales]));
       setHasMore(res.hasMore);
       setNextCursor(res.nextCursor);
+
+      // Asynchronously fetch return summaries for all newly loaded invoices
+      const invoiceNos = res.sales.map((s) => s.invoiceNo);
+      if (invoiceNos.length > 0) {
+        getSaleReturnSummariesForInvoices(invoiceNos)
+          .then((summaries) => {
+            setReturnSummariesMap((prev) => (isNew ? summaries : { ...prev, ...summaries }));
+          })
+          .catch((err) => console.warn('Could not load return summaries:', err));
+      } else if (isNew) {
+        setReturnSummariesMap({});
+      }
     } catch (err) {
       console.error('Failed to load sales history:', err);
     } finally {
@@ -406,10 +421,43 @@ export const SalesHistory: React.FC = () => {
                     remainingBalance: remaining,
                   });
 
+                  // Return Status Resolution
+                  const retSummary = returnSummariesMap[sale.invoiceNo];
+                  const totalRefunded = sale.totalReturnedAmount ?? retSummary?.totalRefundedAmount ?? 0;
+                  const hasReturn = Boolean(
+                    sale.returnStatus ||
+                    (retSummary && retSummary.totalRefundedAmount > 0) ||
+                    totalRefunded > 0
+                  );
+                  const isFullReturn =
+                    sale.returnStatus === 'full' ||
+                    (totalRefunded > 0 && totalRefunded >= sale.grandTotal) ||
+                    (retSummary && retSummary.returnedItems && retSummary.returnedItems.length > 0 &&
+                     sale.items.length > 0 &&
+                     sale.items.every((it) => {
+                       const rQty = retSummary.returnedItems.find((r) => r.productId === it.productId)?.totalReturnedQuantity || 0;
+                       return rQty >= it.quantity;
+                     }));
+                  const isPartialReturn = hasReturn && !isFullReturn;
+
                   return (
                     <tr key={sale.id} className="hover:bg-slate-50/80 transition-colors">
                       <td className="py-3 px-4 font-mono font-bold text-slate-900">
-                        {formatInvoiceDisplay(sale.invoiceNo)}
+                        <div className="flex flex-col items-start gap-1">
+                          <span>{formatInvoiceDisplay(sale.invoiceNo)}</span>
+                          {isFullReturn && (
+                            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-rose-100 text-rose-800 border border-rose-300 shadow-2xs">
+                              <RotateCcw className="w-2.5 h-2.5 text-rose-600 shrink-0" />
+                              RETURNED
+                            </span>
+                          )}
+                          {isPartialReturn && (
+                            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-amber-100 text-amber-900 border border-amber-300 shadow-2xs">
+                              <RotateCcw className="w-2.5 h-2.5 text-amber-600 shrink-0" />
+                              PART-RETURN
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td className="py-3 px-4 text-slate-600">
                         {new Date(sale.saleDate || sale.createdAt).toLocaleString('en-PK', {
@@ -453,17 +501,43 @@ export const SalesHistory: React.FC = () => {
                         )}
                       </td>
                       <td className="py-3 px-4 text-center">
-                        <span
-                          className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${dueInfo.badgeColor}`}
-                        >
-                          {dueInfo.label}
-                        </span>
+                        <div className="flex flex-col items-center justify-center gap-1">
+                          {isFullReturn ? (
+                            <>
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black bg-rose-100 text-rose-800 border border-rose-300 shadow-2xs">
+                                <RotateCcw className="w-3 h-3 text-rose-600 shrink-0" />
+                                Full Return (PKR {totalRefunded.toFixed(2)})
+                              </span>
+                              <span className="text-[9.5px] text-slate-400 line-through">
+                                {dueInfo.label}
+                              </span>
+                            </>
+                          ) : isPartialReturn ? (
+                            <>
+                              <span
+                                className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${dueInfo.badgeColor}`}
+                              >
+                                {dueInfo.label}
+                              </span>
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold bg-amber-100 text-amber-900 border border-amber-300 shadow-2xs">
+                                <RotateCcw className="w-2.5 h-2.5 text-amber-600 shrink-0" />
+                                Returned: PKR {totalRefunded.toFixed(2)}
+                              </span>
+                            </>
+                          ) : (
+                            <span
+                              className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${dueInfo.badgeColor}`}
+                            >
+                              {dueInfo.label}
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td className="py-3 px-4 text-right space-x-1">
                         <button
                           type="button"
                           onClick={() => openDetailModal(sale)}
-                          className="p-1.5 text-slate-500 hover:text-slate-900 hover:bg-slate-200 rounded-lg transition-colors"
+                          className="p-1.5 text-slate-500 hover:text-slate-900 hover:bg-slate-200 rounded-lg transition-colors cursor-pointer"
                           title="View Sale Details"
                         >
                           <Eye className="w-4 h-4" />
@@ -473,7 +547,7 @@ export const SalesHistory: React.FC = () => {
                           <button
                             type="button"
                             onClick={() => setDueDateSale(sale)}
-                            className="p-1.5 text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 rounded-lg transition-colors"
+                            className="p-1.5 text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 rounded-lg transition-colors cursor-pointer"
                             title="Edit Invoice Due Date (Admin Only)"
                           >
                             <Calendar className="w-4 h-4" />
@@ -483,7 +557,7 @@ export const SalesHistory: React.FC = () => {
                         <button
                           type="button"
                           onClick={() => openReprintModal(sale)}
-                          className="p-1.5 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-lg transition-colors"
+                          className="p-1.5 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
                           title="Reprint Thermal Receipt"
                         >
                           <Printer className="w-4 h-4" />
@@ -501,8 +575,20 @@ export const SalesHistory: React.FC = () => {
                         <button
                           type="button"
                           onClick={() => openReturnModal(sale)}
-                          className="p-1.5 text-amber-600 hover:text-amber-800 hover:bg-amber-50 rounded-lg transition-colors"
-                          title="Process Return"
+                          className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                            isFullReturn
+                              ? 'text-rose-600 hover:text-rose-800 hover:bg-rose-50'
+                              : isPartialReturn
+                              ? 'text-amber-700 hover:text-amber-900 hover:bg-amber-100'
+                              : 'text-amber-600 hover:text-amber-800 hover:bg-amber-50'
+                          }`}
+                          title={
+                            isFullReturn
+                              ? `Full Return Completed (Refunded PKR ${totalRefunded.toFixed(2)}) - Click to view return details`
+                              : isPartialReturn
+                              ? `Partially Returned (Refunded PKR ${totalRefunded.toFixed(2)}) - Click to return remaining units`
+                              : 'Process Customer Return & Restock'
+                          }
                         >
                           <RotateCcw className="w-4 h-4" />
                         </button>
@@ -568,6 +654,43 @@ export const SalesHistory: React.FC = () => {
                   <div className="font-semibold text-slate-800">{selectedSale.operatorName}</div>
                 </div>
               </div>
+
+              {/* Authoritative Return Status Banner if returned */}
+              {(() => {
+                const retSummary = returnSummariesMap[selectedSale.invoiceNo];
+                const totalRefunded = selectedSale.totalReturnedAmount ?? retSummary?.totalRefundedAmount ?? 0;
+                const hasReturn = Boolean(selectedSale.returnStatus || (retSummary && retSummary.totalRefundedAmount > 0) || totalRefunded > 0);
+                if (!hasReturn) return null;
+                const isFull = selectedSale.returnStatus === 'full' || totalRefunded >= selectedSale.grandTotal;
+
+                return (
+                  <div className={`p-3 rounded-xl border flex items-center justify-between ${
+                    isFull
+                      ? 'bg-rose-50 border-rose-300 text-rose-950'
+                      : 'bg-amber-50 border-amber-300 text-amber-950'
+                  }`}>
+                    <div className="flex items-center gap-2.5">
+                      <div className={`p-1.5 rounded-lg ${isFull ? 'bg-rose-100 text-rose-700' : 'bg-amber-100 text-amber-800'}`}>
+                        <RotateCcw className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <div className="font-black text-xs uppercase tracking-wide">
+                          {isFull ? 'Invoice Fully Returned & Restocked' : 'Invoice Partially Returned & Restocked'}
+                        </div>
+                        <div className="text-[11px] text-slate-600 mt-0.5">
+                          Total Refund Issued: <span className="font-black text-slate-900">PKR {totalRefunded.toFixed(2)}</span>
+                          {retSummary?.returnCount ? ` across ${retSummary.returnCount} return operation(s)` : ''}
+                        </div>
+                      </div>
+                    </div>
+                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
+                      isFull ? 'bg-rose-200 text-rose-900 border border-rose-300' : 'bg-amber-200 text-amber-900 border border-amber-300'
+                    }`}>
+                      {isFull ? 'Full Return' : 'Partial Return'}
+                    </span>
+                  </div>
+                );
+              })()}
 
               {/* Items List */}
               <div className="border border-slate-200 rounded-xl overflow-hidden">

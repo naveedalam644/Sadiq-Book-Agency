@@ -200,6 +200,40 @@ export const getSaleReturnSummary = async (
   }
 };
 
+/**
+ * Batch-fetches authoritative return summaries for a list of invoice numbers.
+ * Supports up to 30 items per query chunk, returning a lookup map of summaries.
+ */
+export const getSaleReturnSummariesForInvoices = async (
+  invoiceNos: string[]
+): Promise<Record<string, SaleReturnSummaryDocument>> => {
+  if (!db || !invoiceNos || invoiceNos.length === 0) return {};
+
+  const result: Record<string, SaleReturnSummaryDocument> = {};
+  const uniqueInvoices = Array.from(new Set(invoiceNos.map((n) => n.trim()).filter(Boolean)));
+  if (uniqueInvoices.length === 0) return {};
+
+  const chunkSize = 30;
+  for (let i = 0; i < uniqueInvoices.length; i += chunkSize) {
+    const chunk = uniqueInvoices.slice(i, i + chunkSize);
+    try {
+      const q = query(
+        collection(db, 'saleReturnSummaries'),
+        where('invoiceNo', 'in', chunk)
+      );
+      const snap = await getDocs(q);
+      for (const d of snap.docs) {
+        const data = d.data() as SaleReturnSummaryDocument;
+        result[data.invoiceNo] = data;
+      }
+    } catch (err) {
+      console.warn('Failed to fetch return summaries chunk:', err);
+    }
+  }
+
+  return result;
+};
+
 export interface ProcessReturnItemInput {
   productId: string;
   quantity: number;
@@ -292,6 +326,10 @@ export const processSaleReturnTransaction = async (
         authoritativeReturnedMap.set(item.productId, item.totalReturnedQuantity);
       }
     }
+
+    // 1.1b Read Original Sale Document in Transaction
+    const saleRef = doc(db, 'sales', originalSale.id);
+    const saleSnap = await txn.get(saleRef);
 
     // 1.2 Check idempotency: if this exact returnNo was already committed, fail-safe or return
     const existingReturnSnap = await txn.get(returnDocRef);
@@ -421,6 +459,26 @@ export const processSaleReturnTransaction = async (
       createdAt: existingSummary?.createdAt || new Date().toISOString(),
     };
     txn.set(summaryRef, updatedSummary);
+
+    // 2.1b Update Original Sale Document with Return Indicators & Audit Linkage
+    const totalReturnedAmt = updatedSummary.totalRefundedAmount;
+    const isFullReturn =
+      totalReturnedAmt >= originalSale.grandTotal ||
+      originalSale.items.every((item) => {
+        const retQty =
+          updatedReturnedItems.find((r) => r.productId === item.productId)?.totalReturnedQuantity || 0;
+        return retQty >= item.quantity;
+      });
+
+    if (saleSnap.exists()) {
+      txn.update(saleRef, {
+        returnStatus: isFullReturn ? 'full' : 'partial',
+        totalReturnedAmount: totalReturnedAmt,
+        lastReturnNo: returnNo,
+        returnedAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
+    }
 
     // 2.2 Create SaleReturn Document
     const saleReturnDoc: SaleReturnDocument = {
