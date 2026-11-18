@@ -1851,12 +1851,24 @@ export const POS: React.FC = () => {
                         </div>
                       </div>
                     ) : (
-                      <div className="flex items-center gap-1 shrink-0">
+                      <div className="flex items-center gap-1.5 shrink-0 flex-wrap sm:flex-nowrap">
+                        {/* 1. Purchase Price (Cost) - Confidential / Never shown on bill */}
                         <div
-                          className="flex items-center gap-0.5 px-1 py-0.2 rounded bg-amber-100/90 border border-amber-300 shrink-0"
-                          title="Direct selling price per unit for this stationery item"
+                          className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-slate-100 border border-slate-300 text-slate-700 shrink-0"
+                          title="Purchase Price (Cost) - Confidential store purchase cost, never printed on customer bill"
                         >
-                          <span className="text-[9.5px] text-amber-950 font-bold">Rate:</span>
+                          <span className="text-[9px] font-bold text-slate-500 uppercase tracking-tight">Purchase:</span>
+                          <span className="font-mono font-black text-[11px] text-slate-900">
+                            {Number(item.costPrice || 0).toFixed(0)}
+                          </span>
+                        </div>
+
+                        {/* 2. Sale Price (Editable Rate) - Printed on bill */}
+                        <div
+                          className="flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-amber-100/90 border border-amber-300 shrink-0"
+                          title="Sale Price (Editable customer rate - Printed on invoice bill)"
+                        >
+                          <span className="text-[9px] text-amber-950 font-bold uppercase tracking-tight">Sale Price:</span>
                           <input
                             type="number"
                             min="0"
@@ -1864,10 +1876,11 @@ export const POS: React.FC = () => {
                             value={item.effectivePrice || ''}
                             onChange={(e) => updateItemPrice(item.productId, parseFloat(e.target.value) || 0)}
                             disabled={isReadOnly}
-                            className="w-14 text-center font-black text-[11px] border border-amber-300 rounded py-0 focus:outline-none focus:ring-1 focus:ring-[#071F49] bg-white text-slate-900 h-5"
+                            className="w-14 text-center font-black text-[11px] border border-amber-400 rounded py-0 focus:outline-none focus:ring-1 focus:ring-[#071F49] bg-white text-slate-900 h-5"
                           />
                         </div>
-                        <span className="text-[9px] text-emerald-800 bg-emerald-50 border border-emerald-200 px-1 py-0.2 rounded font-black uppercase">
+
+                        <span className="text-[9px] text-emerald-800 bg-emerald-50 border border-emerald-200 px-1 py-0.2 rounded font-black uppercase hidden sm:inline">
                           Direct Rate
                         </span>
                       </div>
