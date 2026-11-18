@@ -7,11 +7,16 @@ import {
   BookOpen,
   Layers,
   Package,
+  ScanBarcode,
 } from 'lucide-react';
 import { Modal } from '../common/Modal';
 import { Button } from '../common/Button';
 import { SearchInput } from '../common/SearchInput';
 import { WhatsAppIcon } from '../common/WhatsAppIcon';
+import { BarcodeScannerModal } from '../common/BarcodeScannerModal';
+import { useBarcodeScanner } from '../../hooks/useBarcodeScanner';
+import { searchProductByBarcodeOrSku } from '../../services/productSearchService';
+import { playScannerBeep, playScannerErrorTone } from '../../utils/soundEffects';
 import type {
   ProductDocument,
   RoughBillDocument,
@@ -80,6 +85,9 @@ export const RoughBillModal: React.FC<RoughBillModalProps> = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [searchResults, setSearchResults] = useState<ProductDocument[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+
+  // Barcode & QR Scanner State
+  const [isScannerModalOpen, setIsScannerModalOpen] = useState(false);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
@@ -263,6 +271,75 @@ export const RoughBillModal: React.FC<RoughBillModalProps> = ({
     setAddQuantity(1);
   };
 
+  // Add scanned product directly to bill
+  const handleAddProductDirectly = useCallback((product: ProductDocument, qty = 1) => {
+    const defaultRate = billType === 'publisher_order'
+      ? (product.costPrice || product.wholesalePrice || product.retailPrice || 0)
+      : (product.retailPrice || product.mrp || 0);
+
+    const defaultDisc = 0;
+    const lineTotal = Math.round(defaultRate * qty * 100) / 100;
+
+    const newItem: RoughBillItem = {
+      productId: product.id,
+      title: product.title,
+      sku: product.sku,
+      publisherName: product.publisherName || product.authorOrPublisher || 'Standard',
+      seriesName: product.seriesName,
+      quantity: qty,
+      unitPrice: defaultRate,
+      discountPercent: defaultDisc,
+      costPrice: product.costPrice,
+      lineTotal,
+    };
+
+    setItems((prev) => {
+      const existingIdx = prev.findIndex((i) => i.productId === product.id);
+      if (existingIdx >= 0) {
+        const copy = [...prev];
+        const newTotalQty = copy[existingIdx].quantity + qty;
+        const currentRate = copy[existingIdx].unitPrice;
+        const currentDisc = copy[existingIdx].discountPercent || 0;
+        const currentDiscAmt = Math.round((currentRate * (currentDisc / 100)) * 100) / 100;
+        copy[existingIdx].quantity = newTotalQty;
+        copy[existingIdx].lineTotal = Math.round((currentRate - currentDiscAmt) * newTotalQty * 100) / 100;
+        return copy;
+      }
+      return [...prev, newItem];
+    });
+  }, [billType]);
+
+  // Handle hardware gun or camera barcode/QR scanning
+  const handleBarcodeScanned = useCallback(
+    async (scannedCode: string) => {
+      try {
+        const clean = scannedCode.trim();
+        if (!clean) return;
+
+        const product = await searchProductByBarcodeOrSku(clean);
+        if (product) {
+          handleAddProductDirectly(product, 1);
+          playScannerBeep();
+          success(`Scanned & Added: "${product.title}"`);
+        } else {
+          playScannerErrorTone();
+          toastError(`Product not found for barcode / QR "${clean}"`);
+        }
+      } catch (err) {
+        console.error('Barcode scan error in Rough Bill:', err);
+        playScannerErrorTone();
+        toastError('Failed to process barcode scan.');
+      }
+    },
+    [handleAddProductDirectly, success, toastError]
+  );
+
+  // Hardware USB/Bluetooth Barcode Scanner Gun listener
+  useBarcodeScanner({
+    onScan: handleBarcodeScanned,
+    enabled: isOpen && !isSubmitting,
+  });
+
   // Update item field directly in table
   const handleItemChange = (index: number, field: keyof RoughBillItem, val: any) => {
     setItems((prev) => {
@@ -444,26 +521,38 @@ export const RoughBillModal: React.FC<RoughBillModalProps> = ({
               </h3>
             </div>
 
-            {/* Mode Switcher */}
-            <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-lg border border-slate-200 text-[11px] font-bold">
+            {/* Mode Switcher & Barcode Scanner */}
+            <div className="flex items-center gap-2 flex-wrap">
               <button
                 type="button"
-                onClick={() => setSelectionMode('hierarchy')}
-                className={`px-2.5 py-1 rounded-md transition ${
-                  selectionMode === 'hierarchy' ? 'bg-[#071F49] text-white shadow-2xs' : 'text-slate-600 hover:text-slate-900'
-                }`}
+                onClick={() => setIsScannerModalOpen(true)}
+                className="flex items-center gap-1.5 px-3 py-1 bg-amber-400 hover:bg-amber-500 text-slate-950 font-bold text-xs rounded-lg transition shadow-2xs cursor-pointer active:scale-95"
+                title="Scan Barcode or QR Code using camera"
               >
-                Publisher → Series Flow
+                <ScanBarcode className="w-3.5 h-3.5 text-slate-950" />
+                <span>Scan Barcode / QR</span>
               </button>
-              <button
-                type="button"
-                onClick={() => setSelectionMode('quick_search')}
-                className={`px-2.5 py-1 rounded-md transition ${
-                  selectionMode === 'quick_search' ? 'bg-[#071F49] text-white shadow-2xs' : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                Quick Search
-              </button>
+
+              <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-lg border border-slate-200 text-[11px] font-bold">
+                <button
+                  type="button"
+                  onClick={() => setSelectionMode('hierarchy')}
+                  className={`px-2.5 py-1 rounded-md transition ${
+                    selectionMode === 'hierarchy' ? 'bg-[#071F49] text-white shadow-2xs' : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  Publisher → Series Flow
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectionMode('quick_search')}
+                  className={`px-2.5 py-1 rounded-md transition ${
+                    selectionMode === 'quick_search' ? 'bg-[#071F49] text-white shadow-2xs' : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  Quick Search
+                </button>
+              </div>
             </div>
           </div>
 
@@ -972,6 +1061,14 @@ export const RoughBillModal: React.FC<RoughBillModalProps> = ({
           </Button>
         </div>
       </form>
+
+      {/* Barcode & QR Code Camera Scanner Modal */}
+      <BarcodeScannerModal
+        isOpen={isScannerModalOpen}
+        onClose={() => setIsScannerModalOpen(false)}
+        onScan={handleBarcodeScanned}
+        title="Rough Bill Barcode & QR Scanner"
+      />
     </Modal>
   );
 };

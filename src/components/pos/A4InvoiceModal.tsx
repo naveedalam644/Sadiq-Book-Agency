@@ -392,6 +392,14 @@ export const A4InvoiceModal: React.FC<A4InvoiceModalProps> = ({
                 )}
               </div>
 
+              {/* Remarks / Special Instructions (Printed on thermal receipt) */}
+              {sale.notes && (
+                <div className="border-t-2 border-dashed border-black pt-1.5 mt-2 text-[9px] text-black">
+                  <span className="font-black uppercase tracking-tight block">Remarks / Instructions:</span>
+                  <span className="font-bold block break-words whitespace-pre-wrap">{sale.notes}</span>
+                </div>
+              )}
+
               {/* Thermal Receipt QR Code (Online Digital Verification) */}
               {qrCodeUrl && (
                 <div className="text-center my-2 text-black flex flex-col items-center">
@@ -603,6 +611,18 @@ export const A4InvoiceModal: React.FC<A4InvoiceModalProps> = ({
                       {isCreditSale && <li>Please ensure payment clearance on or before due date.</li>}
                     </ul>
                   </div>
+
+                  {/* Remarks / Special Instructions for Customer */}
+                  {sale.notes && (
+                    <div className="border-t border-slate-300 pt-2 space-y-0.5 text-[10.5px]">
+                      <span className="font-bold text-black uppercase tracking-wider block text-[10px]">
+                        Special Instructions / Remarks:
+                      </span>
+                      <p className="font-semibold text-slate-800 italic whitespace-pre-wrap bg-slate-50 border border-slate-200 p-1.5 rounded-xs text-[10px] leading-tight">
+                        {sale.notes}
+                      </p>
+                    </div>
+                  )}
 
                   {qrCodeUrl && (
                     <div className="border-t border-slate-300 pt-2 flex items-center gap-2.5">

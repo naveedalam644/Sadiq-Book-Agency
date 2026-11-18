@@ -338,6 +338,17 @@ export const PublicInvoiceView: React.FC = () => {
                 </span>
               </div>
 
+              {sale.notes && (
+                <div className="pt-2 border-t border-slate-200">
+                  <span className="text-[10px] uppercase font-bold text-slate-500 block tracking-wider mb-0.5">
+                    Special Instructions / Remarks:
+                  </span>
+                  <p className="text-xs font-semibold text-slate-800 italic bg-white p-2 rounded-lg border border-slate-200 whitespace-pre-wrap">
+                    {sale.notes}
+                  </p>
+                </div>
+              )}
+
               {qrUrl && (
                 <div className="flex items-center gap-3 pt-3 border-t border-slate-200">
                   <div className="border border-slate-300 p-1 bg-white rounded-lg shadow-2xs shrink-0">

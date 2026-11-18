@@ -114,6 +114,8 @@ export const POS: React.FC = () => {
     clearCart,
     setCustomer,
     setCustomDiscounts,
+    notes,
+    setNotes,
     claimTerminalOwnership,
     confirmCheckoutSuccess,
     prepareSalePayload,
@@ -2293,6 +2295,22 @@ export const POS: React.FC = () => {
                 )}
               </div>
             )}
+
+            {/* Bill Remarks / Special Customer Instructions (Printed on invoice bill) */}
+            <div className="bg-slate-50 border border-slate-200 rounded-lg p-1.5 px-2 text-xs space-y-1">
+              <label className="block text-[10px] font-bold text-slate-700 uppercase tracking-tight flex items-center justify-between">
+                <span>Bill Remarks / Special Instructions</span>
+                <span className="text-[9px] text-slate-400 font-normal">Printed on bill</span>
+              </label>
+              <input
+                type="text"
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="e.g. Delivery via Daewoo / Return policy / Note for customer"
+                disabled={isReadOnly}
+                className="w-full text-xs px-2 py-1 bg-white border border-slate-300 rounded focus:outline-none focus:ring-1 focus:ring-[#071F49] text-slate-800 placeholder:text-slate-400 h-6"
+              />
+            </div>
 
             {/* Clear & Checkout Buttons */}
             <div className="flex gap-1.5 pt-0.5 shrink-0">
