@@ -36,6 +36,7 @@ export interface PublisherProductDetailMetrics {
   stockRetailValue: number;
   costPrice: number;
   retailPrice: number;
+  publisherDiscountPercent?: number;
   // Purchases Inflow in Period
   purchasedQty: number;
   purchasedAmount: number;
@@ -56,6 +57,7 @@ export interface PublisherSeriesMetrics {
   seriesId?: string;
   seriesName: string;
   totalProductsCount: number;
+  publisherDiscountPercent?: number;
   // Current Shop Stock on Hand ("ye series ka mal hamare pas kitna para hai")
   stockQuantity: number;
   stockCostValue: number;
@@ -234,6 +236,7 @@ export const getPublisherAnalyticsReport = async (
     classRank: number;
     costPrice: number;
     retailPrice: number;
+    publisherDiscountPercent?: number;
     stockOnHand: number;
     stockCostValue: number;
     stockRetailValue: number;
@@ -323,6 +326,7 @@ export const getPublisherAnalyticsReport = async (
           classRank: getClassSortRank(prod),
           costPrice: cost,
           retailPrice: retail,
+          publisherDiscountPercent: prod.publisherDiscountPercent,
           stockOnHand: stock,
           stockCostValue: stock * cost,
           stockRetailValue: stock * retail,
@@ -592,6 +596,7 @@ export const getPublisherAnalyticsReport = async (
         classRank: p.classRank || getClassSortRank({ targetClass: p.targetClass, className: p.className, title: p.title }),
         costPrice: p.costPrice,
         retailPrice: p.retailPrice,
+        publisherDiscountPercent: p.publisherDiscountPercent,
         stockOnHand: p.stockOnHand,
         stockCostValue: Math.round(p.stockCostValue * 100) / 100,
         stockRetailValue: Math.round(p.stockRetailValue * 100) / 100,
@@ -653,11 +658,14 @@ export const getPublisherAnalyticsReport = async (
       const sNetCogs = Math.round(sCogs * 100) / 100;
       const sProfit = Math.round((sNetSales - sNetCogs) * 100) / 100;
       const sMargin = sNetSales > 0 ? Math.round((sProfit / sNetSales) * 1000) / 10 : 0;
+      const firstWithDisc = seriesProds.find((p) => typeof p.publisherDiscountPercent === 'number');
+      const sDisc = firstWithDisc ? firstWithDisc.publisherDiscountPercent : 0;
 
       seriesBreakdown.push({
         seriesId: seriesProds[0]?.seriesId,
         seriesName: serName,
         totalProductsCount: seriesProds.length,
+        publisherDiscountPercent: sDisc,
         stockQuantity: sStockQty,
         stockCostValue: Math.round(sStockCostVal * 100) / 100,
         stockRetailValue: Math.round(sStockRetailVal * 100) / 100,

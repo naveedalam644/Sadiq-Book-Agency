@@ -3,11 +3,15 @@ import {
   Plus,
   Eye,
   Building2,
+  Edit2,
+  Trash2,
+  AlertTriangle,
 } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
 import { Button } from '../components/common/Button';
 import { Badge } from '../components/common/Badge';
+import { Modal } from '../components/common/Modal';
 import { Table, type Column } from '../components/common/Table';
 import { SearchInput } from '../components/common/SearchInput';
 import { PurchaseFormModal } from '../components/purchases/PurchaseFormModal';
@@ -16,6 +20,8 @@ import type { PurchaseDocument, SupplierDocument, ProductDocument } from '../typ
 import {
   getPurchasesPaginated,
   createPurchaseTransaction,
+  updatePurchaseTransaction,
+  deletePurchaseTransaction,
   type PurchaseFilters,
 } from '../services/purchaseService';
 import { getActiveSuppliersForDropdown } from '../services/supplierService';
@@ -45,7 +51,10 @@ export const Purchases: React.FC = () => {
   // Modals
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
   const [viewingPurchase, setViewingPurchase] = useState<PurchaseDocument | null>(null);
+  const [editingPurchase, setEditingPurchase] = useState<PurchaseDocument | null>(null);
+  const [deletingPurchase, setDeletingPurchase] = useState<PurchaseDocument | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const filtersRef = useRef(filters);
   useEffect(() => {
@@ -102,22 +111,57 @@ export const Purchases: React.FC = () => {
   const handleSubmit = async (payload: any) => {
     setIsSubmitting(true);
     try {
-      const created = await createPurchaseTransaction(
-        payload,
+      if (editingPurchase) {
+        await updatePurchaseTransaction(
+          editingPurchase.id,
+          payload,
+          currentUser?.uid || 'admin',
+          currentUser?.email || 'admin@sadiqbookagency.com'
+        );
+        success(
+          `Purchase invoice "${payload.purchaseInvoiceNo}" updated successfully. Stock & balances adjusted.`
+        );
+      } else {
+        const created = await createPurchaseTransaction(
+          payload,
+          currentUser?.uid || 'admin',
+          currentUser?.email || 'admin@sadiqbookagency.com'
+        );
+        success(
+          `Purchase "${created.purchaseInvoiceNo}" recorded. Stock inventory has been updated.`
+        );
+      }
+      setIsFormModalOpen(false);
+      setEditingPurchase(null);
+      loadPurchases(null);
+      loadPrerequisites(); // Refresh products with updated stock
+    } catch (err: any) {
+      toastError(err?.message || 'Failed to save purchase');
+      throw err;
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!deletingPurchase) return;
+    setIsDeleting(true);
+    try {
+      await deletePurchaseTransaction(
+        deletingPurchase.id,
         currentUser?.uid || 'admin',
         currentUser?.email || 'admin@sadiqbookagency.com'
       );
       success(
-        `Purchase "${created.purchaseInvoiceNo}" recorded. Stock inventory has been updated.`
+        `Purchase invoice "${deletingPurchase.purchaseInvoiceNo}" deleted and associated stock reversed.`
       );
-      setIsFormModalOpen(false);
+      setDeletingPurchase(null);
       loadPurchases(null);
-      loadPrerequisites(); // Refresh products with updated stock
+      loadPrerequisites();
     } catch (err: any) {
-      toastError(err?.message || 'Failed to finalize purchase');
-      throw err;
+      toastError(err?.message || 'Failed to delete purchase invoice');
     } finally {
-      setIsSubmitting(false);
+      setIsDeleting(false);
     }
   };
 
@@ -219,7 +263,7 @@ export const Purchases: React.FC = () => {
       header: 'Actions',
       align: 'right',
       render: (row) => (
-        <div className="flex items-center justify-end">
+        <div className="flex items-center justify-end gap-1">
           <button
             type="button"
             onClick={() => setViewingPurchase(row)}
@@ -227,6 +271,26 @@ export const Purchases: React.FC = () => {
             title="View Itemized Invoice"
           >
             <Eye className="w-4 h-4" />
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              loadPrerequisites();
+              setEditingPurchase(row);
+              setIsFormModalOpen(true);
+            }}
+            className="p-1.5 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition"
+            title="Edit Purchase Invoice"
+          >
+            <Edit2 className="w-4 h-4" />
+          </button>
+          <button
+            type="button"
+            onClick={() => setDeletingPurchase(row)}
+            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"
+            title="Delete Purchase Invoice"
+          >
+            <Trash2 className="w-4 h-4" />
           </button>
         </div>
       ),
@@ -250,6 +314,7 @@ export const Purchases: React.FC = () => {
           variant="gold"
           size="sm"
           onClick={() => {
+            setEditingPurchase(null);
             loadPrerequisites();
             setIsFormModalOpen(true);
           }}
@@ -329,11 +394,15 @@ export const Purchases: React.FC = () => {
       {/* Form Modal */}
       <PurchaseFormModal
         isOpen={isFormModalOpen}
-        onClose={() => setIsFormModalOpen(false)}
+        onClose={() => {
+          setIsFormModalOpen(false);
+          setEditingPurchase(null);
+        }}
         onSubmit={handleSubmit}
         suppliers={suppliers}
         products={products}
         isLoading={isSubmitting}
+        initialData={editingPurchase}
       />
 
       {/* Detail Modal */}
@@ -342,6 +411,81 @@ export const Purchases: React.FC = () => {
         onClose={() => setViewingPurchase(null)}
         purchase={viewingPurchase}
       />
+
+      {/* Delete Confirmation Modal */}
+      {deletingPurchase && (
+        <Modal
+          isOpen={Boolean(deletingPurchase)}
+          onClose={() => !isDeleting && setDeletingPurchase(null)}
+          title="Delete Purchase Invoice"
+          size="md"
+          footer={
+            <div className="flex items-center justify-end gap-3 w-full">
+              <Button
+                variant="outline"
+                type="button"
+                onClick={() => setDeletingPurchase(null)}
+                disabled={isDeleting}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="danger"
+                type="button"
+                onClick={handleConfirmDelete}
+                isLoading={isDeleting}
+                disabled={isDeleting}
+                leftIcon={<Trash2 className="w-4 h-4" />}
+              >
+                Delete & Reverse Stock
+              </Button>
+            </div>
+          }
+        >
+          <div className="space-y-4">
+            <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-xl flex items-start gap-3">
+              <AlertTriangle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
+              <div className="text-xs text-rose-800 space-y-1">
+                <p className="font-bold">Caution: This action cannot be undone.</p>
+                <p>
+                  Deleting this purchase invoice will permanently remove the record from the database, deduct incoming stock units from physical inventory, delete the corresponding FIFO batches, and reverse any remaining debt added to the supplier account.
+                </p>
+              </div>
+            </div>
+
+            <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 text-xs space-y-1.5 font-sans">
+              <div className="flex justify-between">
+                <span className="text-slate-500">Invoice Number:</span>
+                <span className="font-mono font-bold text-slate-800">
+                  {deletingPurchase.purchaseInvoiceNo}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Supplier:</span>
+                <span className="font-semibold text-slate-800">
+                  {deletingPurchase.supplierName}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Date:</span>
+                <span className="text-slate-700">{deletingPurchase.purchaseDate}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Total Inflow Units:</span>
+                <span className="font-mono font-bold text-slate-800">
+                  {deletingPurchase.items.reduce((s, i) => s + i.quantity, 0)} units ({deletingPurchase.items.length} titles)
+                </span>
+              </div>
+              <div className="flex justify-between pt-1 border-t border-slate-200">
+                <span className="font-bold text-slate-700">Grand Total:</span>
+                <span className="font-mono font-bold text-[#071F49]">
+                  {formatCurrency(deletingPurchase.grandTotal)}
+                </span>
+              </div>
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 };

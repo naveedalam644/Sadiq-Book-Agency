@@ -276,6 +276,7 @@ export interface PurchaseDocument {
   receivedByUserId: string;
   notes?: string;
   createdAt: string;
+  updatedAt?: string;
 }
 
 // 6b. Stock Batches Collection ('stockBatches') — FIFO Cost Tracking
@@ -450,6 +451,7 @@ export interface PaymentDocument {
   paymentDate: string;
   notes?: string;
   createdAt: string;
+  updatedAt?: string;
 }
 
 // 9. Customer Ledger Collection ('customerLedger')
@@ -502,7 +504,15 @@ export interface ExpenseDocument {
 }
 
 // 11. Stock Movements Collection ('stockMovements')
-export type StockMovementReason = 'sale' | 'purchase' | 'customer_return' | 'supplier_return' | 'adjustment' | 'damage';
+export type StockMovementReason =
+  | 'sale'
+  | 'purchase'
+  | 'purchase_edit'
+  | 'purchase_deletion'
+  | 'customer_return'
+  | 'supplier_return'
+  | 'adjustment'
+  | 'damage';
 
 export interface StockMovementDocument {
   id: string;

@@ -20,9 +20,16 @@ import { Modal } from '../common/Modal';
 import { Input } from '../common/Input';
 import { Select } from '../common/Select';
 import { Button } from '../common/Button';
+import { ProductFormModal } from '../inventory/ProductFormModal';
+import { createProduct, type CreateProductInput } from '../../services/productService';
+import { getCategories } from '../../services/categoryService';
+import { useAuth } from '../../hooks/useAuth';
+import { useToast } from '../../hooks/useToast';
 import type {
   SupplierDocument,
   ProductDocument,
+  PurchaseDocument,
+  CategoryDocument,
   ItemClassification,
   PublisherDocument,
   SeriesDocument,
@@ -54,6 +61,7 @@ export interface PurchaseFormModalProps {
   suppliers: SupplierDocument[];
   products: ProductDocument[];
   isLoading?: boolean;
+  initialData?: PurchaseDocument | null;
 }
 
 const getInitialDate = () => new Date().toISOString().split('T')[0];
@@ -67,7 +75,11 @@ export const PurchaseFormModal: React.FC<PurchaseFormModalProps> = ({
   suppliers,
   products,
   isLoading = false,
+  initialData = null,
 }) => {
+  const { currentUser } = useAuth();
+  const { success: toastSuccess, error: toastError } = useToast();
+
   // Invoice Header
   const [supplierId, setSupplierId] = useState('');
   const [purchaseInvoiceNo, setPurchaseInvoiceNo] = useState(generateInitialInvoiceNo);
@@ -82,6 +94,55 @@ export const PurchaseFormModal: React.FC<PurchaseFormModalProps> = ({
   const [formError, setFormError] = useState<string | null>(null);
   const [feedbackMsg, setFeedbackMsg] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Quick Add Product Modal State (Per User Drawing in Image 2)
+  const [isAddProductModalOpen, setIsAddProductModalOpen] = useState(false);
+  const [categories, setCategories] = useState<CategoryDocument[]>([]);
+
+  useEffect(() => {
+    if (isOpen) {
+      getCategories()
+        .then(setCategories)
+        .catch((err) => console.warn('Could not load categories in purchase intake:', err));
+    }
+  }, [isOpen]);
+
+  // Synchronize state when initialData changes (for Edit mode) or reset for Create mode
+  useEffect(() => {
+    if (isOpen && initialData) {
+      setSupplierId(initialData.supplierId || '');
+      setPurchaseInvoiceNo(initialData.purchaseInvoiceNo || '');
+      setPurchaseDate(initialData.purchaseDate || getInitialDate());
+      setPaymentMethod(initialData.paymentMethod || 'cash');
+      setDiscountAmount(initialData.discountAmount !== undefined ? initialData.discountAmount : 0);
+      setPaidAmount(initialData.paidAmount !== undefined ? initialData.paidAmount : 0);
+      setNotes(initialData.notes || '');
+      setItems(
+        (initialData.items || []).map((it) => ({
+          productId: it.productId,
+          productName: it.productName,
+          quantity: it.quantity,
+          mrp: it.mrp !== undefined ? it.mrp : '',
+          publisherDiscountPercent: it.publisherDiscountPercent !== undefined ? it.publisherDiscountPercent : '',
+          unitCost: it.unitCost,
+          totalCost: it.totalCost,
+        }))
+      );
+      setFormError(null);
+      setFeedbackMsg(null);
+    } else if (isOpen && !initialData) {
+      setSupplierId('');
+      setPurchaseInvoiceNo(generateInitialInvoiceNo());
+      setPurchaseDate(getInitialDate());
+      setPaymentMethod('cash');
+      setDiscountAmount(0);
+      setPaidAmount(0);
+      setNotes('');
+      setItems([]);
+      setFormError(null);
+      setFeedbackMsg(null);
+    }
+  }, [isOpen, initialData]);
 
   // Search & Filter State (Separate Flows: Books vs Notebooks & Other Items)
   const [intakeMode, setIntakeMode] = useState<'books' | 'others'>('books');
@@ -350,6 +411,23 @@ export const PurchaseFormModal: React.FC<PurchaseFormModalProps> = ({
     }
   };
 
+  const handleSaveNewProduct = async (payload: CreateProductInput) => {
+    try {
+      const activeUid = currentUser?.uid || 'admin';
+      const activeEmail = currentUser?.email || 'admin@sadiqbookagency.com';
+      const created = await createProduct(payload, activeUid, activeEmail);
+      toastSuccess(`Product "${created.title}" registered in catalog.`);
+      setIsAddProductModalOpen(false);
+      // Immediately add this newly registered product into this purchase intake
+      handleSelectProduct(created, 1);
+      // Also inject into available products
+      setAvailableProducts((prev) => [created, ...prev]);
+    } catch (err: any) {
+      toastError(err?.message || 'Failed to add product');
+      throw err;
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError(null);
@@ -384,10 +462,17 @@ export const PurchaseFormModal: React.FC<PurchaseFormModalProps> = ({
       }
     }
 
-    const isUnique = await checkPurchaseInvoiceUnique(supplierId, purchaseInvoiceNo);
-    if (!isUnique) {
-      setFormError(`Purchase invoice "${purchaseInvoiceNo}" is already logged for this supplier.`);
-      return;
+    const isEditingSameInvoice =
+      Boolean(initialData) &&
+      initialData?.purchaseInvoiceNo === purchaseInvoiceNo.trim() &&
+      initialData?.supplierId === supplierId;
+
+    if (!isEditingSameInvoice) {
+      const isUnique = await checkPurchaseInvoiceUnique(supplierId, purchaseInvoiceNo);
+      if (!isUnique) {
+        setFormError(`Purchase invoice "${purchaseInvoiceNo}" is already logged for this supplier.`);
+        return;
+      }
     }
 
     const selectedSupplier = suppliers.find((s) => s.id === supplierId);
@@ -429,8 +514,12 @@ export const PurchaseFormModal: React.FC<PurchaseFormModalProps> = ({
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title="Create Purchase Order / Stock Intake"
-      description="Record incoming shipment from publishing houses or paper mills. Physical stock and audit movements will update automatically."
+      title={initialData ? 'Edit Purchase Invoice / Stock Intake' : 'Create Purchase Order / Stock Intake'}
+      description={
+        initialData
+          ? 'Modify supplier invoice items, purchase costs, or payment status. Inventory stock and audit records will adjust automatically.'
+          : 'Record incoming shipment from publishing houses or paper mills. Physical stock and audit movements will update automatically.'
+      }
       size="2xl"
       footer={
         <div className="flex items-center justify-between w-full">
@@ -456,7 +545,7 @@ export const PurchaseFormModal: React.FC<PurchaseFormModalProps> = ({
               isLoading={isSubmitting || isLoading}
               disabled={isSubmitting || isLoading || items.length === 0}
             >
-              Finalize Purchase & Update Stock
+              {initialData ? 'Update Purchase & Stock' : 'Finalize Purchase & Update Stock'}
             </Button>
           </div>
         </div>
@@ -518,6 +607,15 @@ export const PurchaseFormModal: React.FC<PurchaseFormModalProps> = ({
             </div>
 
             <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setIsAddProductModalOpen(true)}
+                className="px-3 py-1 bg-[#071F49] hover:bg-[#0E2E70] text-[#F5B51B] text-xs font-bold rounded-lg shadow-sm transition flex items-center gap-1.5 cursor-pointer border border-[#F5B51B]/30 shrink-0"
+                title="Add new product directly into catalog & invoice"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Add Product</span>
+              </button>
               {isSearching && (
                 <span className="text-[10px] font-medium text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200 animate-pulse">
                   Searching catalog...
@@ -1256,6 +1354,15 @@ export const PurchaseFormModal: React.FC<PurchaseFormModalProps> = ({
           </div>
         </div>
       </form>
+
+      {isAddProductModalOpen && (
+        <ProductFormModal
+          isOpen={isAddProductModalOpen}
+          onClose={() => setIsAddProductModalOpen(false)}
+          onSubmit={handleSaveNewProduct}
+          categories={categories}
+        />
+      )}
     </Modal>
   );
 };

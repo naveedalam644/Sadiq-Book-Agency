@@ -327,24 +327,48 @@ export const updateProductPrice = async (
 /**
  * Batch updates publisher discount % for all products belonging to a series.
  * Automatically recalculates each product's costPrice based on its MRP.
+ * Supports updating by seriesId or by seriesName + publisherName.
  */
 export const batchUpdateSeriesDiscount = async (
-  seriesId: string,
+  seriesParam: string | { seriesId?: string; seriesName: string; publisherName?: string },
   publisherDiscountPercent: number,
   userId = 'system',
   userEmail = 'admin@sadiqbookagency.com'
 ): Promise<{ updatedCount: number; totalValuationDelta: number }> => {
   if (!db) throw new Error('Firestore not initialized');
-  if (!seriesId) throw new Error('Series ID is required');
+
+  const seriesId = typeof seriesParam === 'string' ? seriesParam : seriesParam.seriesId;
+  const seriesName = typeof seriesParam === 'object' ? seriesParam.seriesName : undefined;
+  const publisherName = typeof seriesParam === 'object' ? seriesParam.publisherName : undefined;
+
+  if (!seriesId && !seriesName) {
+    throw new Error('Series ID or Series Name is required');
+  }
 
   const discount = Math.max(0, Math.min(100, Number(publisherDiscountPercent)));
-  const productsQuery = query(
-    collection(db, 'products'),
-    where('seriesId', '==', seriesId)
-  );
+  let matchingDocs: any[] = [];
 
-  const snap = await getDocs(productsQuery);
-  if (snap.empty) {
+  if (seriesId) {
+    const q1 = query(collection(db, 'products'), where('seriesId', '==', seriesId));
+    const snap1 = await getDocs(q1);
+    matchingDocs = [...snap1.docs];
+  }
+
+  // Fallback: If no docs found by seriesId or seriesId is empty, query by seriesName
+  if (matchingDocs.length === 0 && seriesName) {
+    const q2 = query(collection(db, 'products'), where('seriesName', '==', seriesName));
+    const snap2 = await getDocs(q2);
+    matchingDocs = snap2.docs.filter((d) => {
+      const data = d.data() as ProductDocument;
+      if (!publisherName) return true;
+      const pubMatch =
+        (data.publisherName && data.publisherName.trim().toLowerCase() === publisherName.trim().toLowerCase()) ||
+        (data.authorOrPublisher && data.authorOrPublisher.trim().toLowerCase() === publisherName.trim().toLowerCase());
+      return pubMatch;
+    });
+  }
+
+  if (matchingDocs.length === 0) {
     return { updatedCount: 0, totalValuationDelta: 0 };
   }
 
@@ -353,7 +377,7 @@ export const batchUpdateSeriesDiscount = async (
   let totalValuationDelta = 0;
   let updatedCount = 0;
 
-  for (const docSnap of snap.docs) {
+  for (const docSnap of matchingDocs) {
     const prod = docSnap.data() as ProductDocument;
     const mrp = Number(prod.retailPrice) || 0;
     const newCostPrice = Math.round((mrp * (1 - discount / 100)) * 100) / 100;
@@ -398,12 +422,14 @@ export const batchUpdateSeriesDiscount = async (
     'SERIES_PRICE_DISCOUNT_BATCH_UPDATED',
     'products',
     JSON.stringify({
-      seriesId,
+      seriesId: seriesId || undefined,
+      seriesName: seriesName || undefined,
+      publisherName: publisherName || undefined,
       newDiscountPercent: discount,
       updatedCount,
       totalValuationDelta,
     }),
-    seriesId,
+    seriesId || seriesName || 'series_discount',
     userId,
     userEmail
   );

@@ -329,6 +329,444 @@ export const createPurchaseTransaction = async (
   return purchaseDoc;
 };
 
+/**
+ * Deletes a purchase invoice atomically:
+ * 1. Reverses stock additions from products and adjusts lowStock status.
+ * 2. Deletes the FIFO batches created by this purchase invoice.
+ * 3. Records an immutable stock movement ('out' / 'purchase_deletion') for each product.
+ * 4. Adjusts supplier currentBalance (deducting the remaining balance added by this purchase).
+ * 5. Updates global inventory summary quantity and valuation atomically.
+ * 6. Deletes the purchase document and records an audit log.
+ */
+export const deletePurchaseTransaction = async (
+  purchaseId: string,
+  userId = 'system',
+  userEmail = 'admin@sadiqbookagency.com'
+): Promise<{ success: boolean; deletedInvoiceNo: string }> => {
+  if (!db) throw new Error('Firestore not initialized');
+  if (!purchaseId) throw new Error('Purchase ID is required');
+
+  const purchaseRef = doc(db, 'purchases', purchaseId);
+  const now = new Date().toISOString();
+  let deletedInvoiceNo = '';
+
+  await runTransaction(db, async (transaction) => {
+    // 1. Transactional Read of purchase document
+    const purchaseSnap = await transaction.get(purchaseRef);
+    if (!purchaseSnap.exists()) {
+      throw new Error(`Purchase invoice record "${purchaseId}" was not found.`);
+    }
+
+    const purchaseDoc = purchaseSnap.data() as PurchaseDocument;
+    deletedInvoiceNo = purchaseDoc.purchaseInvoiceNo;
+
+    // 2. Read all affected products
+    const productSnapshots: Array<{
+      ref: any;
+      doc: ProductDocument;
+      item: (typeof purchaseDoc.items)[0];
+    }> = [];
+
+    for (const item of purchaseDoc.items) {
+      const prodRef = doc(db!, 'products', item.productId);
+      const prodSnap = await transaction.get(prodRef);
+      if (prodSnap.exists()) {
+        productSnapshots.push({
+          ref: prodRef,
+          doc: prodSnap.data() as ProductDocument,
+          item,
+        });
+      }
+    }
+
+    // 3. Read supplier doc if remaining balance exists
+    let supRef: any = null;
+    let supSnap: any = null;
+    if (purchaseDoc.remainingBalance > 0 && purchaseDoc.supplierId) {
+      supRef = doc(db!, 'suppliers', purchaseDoc.supplierId);
+      supSnap = await transaction.get(supRef);
+    }
+
+    // 4. Read inventory summary doc
+    const summaryRef = doc(db!, 'settings', INVENTORY_SUMMARY_DOC_ID);
+    const summarySnap = await transaction.get(summaryRef);
+
+    // -----------------------------------------------------------------
+    // WRITES PHASE
+    // -----------------------------------------------------------------
+    let totalQtyRemoved = 0;
+    let totalValRemoved = 0;
+    let lowStockDelta = 0;
+
+    for (const { ref: prodRef, doc: prodData, item } of productSnapshots) {
+      const currentStock = Number(prodData.currentStock || 0);
+      const newStock = Math.max(0, currentStock - Number(item.quantity));
+      const lowThreshold = Number(prodData.lowStockThreshold || 0);
+      const wasLow = currentStock <= lowThreshold;
+      const isNowLow = newStock <= lowThreshold;
+
+      if (!wasLow && isNowLow) lowStockDelta += 1;
+      if (wasLow && !isNowLow) lowStockDelta -= 1;
+
+      totalQtyRemoved += Number(item.quantity);
+      totalValRemoved += Number(item.totalCost || item.quantity * item.unitCost);
+
+      // Revert product currentStock
+      transaction.update(prodRef, {
+        currentStock: newStock,
+        isLowStock: isNowLow,
+        updatedAt: now,
+      });
+
+      // Delete the FIFO stock batch for this purchase line
+      const batchId = getStockBatchId(purchaseDoc.id, item.productId);
+      const batchRef = doc(db!, STOCK_BATCHES_COLLECTION, batchId);
+      transaction.delete(batchRef);
+
+      // Record immutable stock movement reversal
+      const moveRef = doc(collection(db!, 'stockMovements'));
+      const movement: StockMovementDocument = {
+        id: moveRef.id,
+        productId: item.productId,
+        productName: item.productName,
+        movementType: 'out',
+        quantity: Number(item.quantity),
+        previousStock: currentStock,
+        newStock: newStock,
+        reason: 'purchase_deletion',
+        referenceDocId: purchaseDoc.id,
+        recordedByUserId: userId,
+        createdAt: now,
+      };
+      transaction.set(moveRef, movement);
+    }
+
+    // Adjust supplier currentBalance (deduct the debt this purchase added)
+    if (supRef && supSnap && supSnap.exists()) {
+      const currentSupBal = Number(supSnap.data().currentBalance || 0);
+      const newSupBal = Math.max(0, currentSupBal - purchaseDoc.remainingBalance);
+      transaction.update(supRef, {
+        currentBalance: newSupBal,
+        updatedAt: now,
+      });
+    }
+
+    // Atomically decrement global inventory summary
+    if (summarySnap && summarySnap.exists()) {
+      transaction.update(summaryRef, {
+        totalStockQuantity: increment(-totalQtyRemoved),
+        totalStockValue: increment(-totalValRemoved),
+        lowStockCount: increment(lowStockDelta),
+        updatedAt: now,
+      });
+    }
+
+    // Delete purchase record
+    transaction.delete(purchaseRef);
+  });
+
+  await logAuditEvent(
+    'DELETE_PURCHASE',
+    'purchases',
+    `Purchase invoice "${deletedInvoiceNo}" deleted. Inventory stock and supplier balances adjusted.`,
+    purchaseId,
+    userId,
+    userEmail
+  );
+
+  return { success: true, deletedInvoiceNo };
+};
+
+/**
+ * Updates an existing purchase invoice atomically:
+ * 1. Adjusts stock quantities and latest costs based on differences between old and new items.
+ * 2. Replaces/updates FIFO batches for this purchase.
+ * 3. Reconciles supplier balances for the changed remaining debt.
+ * 4. Updates inventory summary metrics.
+ * 5. Saves the updated purchase document and writes an audit event.
+ */
+export const updatePurchaseTransaction = async (
+  purchaseId: string,
+  input: CreatePurchaseInput,
+  userId = 'system',
+  userEmail = 'admin@sadiqbookagency.com'
+): Promise<PurchaseDocument> => {
+  if (!db) throw new Error('Firestore not initialized');
+  if (!purchaseId) throw new Error('Purchase ID is required');
+
+  if (!input.items || input.items.length === 0) {
+    throw new Error('A purchase must contain at least one product item.');
+  }
+
+  const cleanInvoiceNo = input.purchaseInvoiceNo.trim();
+  if (!cleanInvoiceNo) {
+    throw new Error('Invoice / Bill reference number is required.');
+  }
+
+  const purchaseRef = doc(db, 'purchases', purchaseId);
+  const now = new Date().toISOString();
+  const newRemainingBalance = Math.max(0, Number(input.grandTotal) - (Number(input.paidAmount) || 0));
+
+  let finalPurchaseDoc: PurchaseDocument | null = null;
+
+  await runTransaction(db, async (transaction) => {
+    // 1. Transactional read of existing purchase
+    const oldSnap = await transaction.get(purchaseRef);
+    if (!oldSnap.exists()) {
+      throw new Error(`Purchase record "${purchaseId}" not found.`);
+    }
+    const oldDoc = oldSnap.data() as PurchaseDocument;
+
+    // Collect all involved product IDs (both old and new)
+    const allProductIds = Array.from(
+      new Set([...oldDoc.items.map((i) => i.productId), ...input.items.map((i) => i.productId)])
+    );
+
+    // Read all products
+    const productSnaps = await Promise.all(
+      allProductIds.map(async (pId) => {
+        const pRef = doc(db!, 'products', pId);
+        const pSnap = await transaction.get(pRef);
+        return { id: pId, ref: pRef, snap: pSnap };
+      })
+    );
+    const prodMap = new Map(productSnaps.map((p) => [p.id, p]));
+
+    // Read suppliers (both old and new if different)
+    let oldSupRef: any = null;
+    let oldSupSnap: any = null;
+    if (oldDoc.supplierId) {
+      oldSupRef = doc(db!, 'suppliers', oldDoc.supplierId);
+      oldSupSnap = await transaction.get(oldSupRef);
+    }
+
+    let newSupRef: any = null;
+    let newSupSnap: any = null;
+    if (input.supplierId && input.supplierId !== oldDoc.supplierId) {
+      newSupRef = doc(db!, 'suppliers', input.supplierId);
+      newSupSnap = await transaction.get(newSupRef);
+    }
+
+    // Read inventory summary
+    const summaryRef = doc(db!, 'settings', INVENTORY_SUMMARY_DOC_ID);
+    const summarySnap = await transaction.get(summaryRef);
+
+    // -----------------------------------------------------------------
+    // WRITES PHASE
+    // -----------------------------------------------------------------
+    let totalQtyDelta = 0;
+    let totalValDelta = 0;
+    let lowStockDelta = 0;
+
+    // Build old items map
+    const oldItemMap = new Map<string, { qty: number; unitCost: number; totalCost: number }>();
+    for (const it of oldDoc.items) {
+      const prev = oldItemMap.get(it.productId) || { qty: 0, unitCost: it.unitCost, totalCost: 0 };
+      oldItemMap.set(it.productId, {
+        qty: prev.qty + it.quantity,
+        unitCost: it.unitCost,
+        totalCost: prev.totalCost + it.totalCost,
+      });
+    }
+
+    // Build new items map
+    const newItemMap = new Map<
+      string,
+      {
+        qty: number;
+        unitCost: number;
+        mrp?: number;
+        pubDisc?: number;
+        item: (typeof input.items)[0];
+      }
+    >();
+    for (const it of input.items) {
+      const prev = newItemMap.get(it.productId) || {
+        qty: 0,
+        unitCost: Number(it.unitCost),
+        mrp: it.mrp !== undefined ? Number(it.mrp) : undefined,
+        pubDisc: it.publisherDiscountPercent !== undefined ? Number(it.publisherDiscountPercent) : undefined,
+        item: it,
+      };
+      newItemMap.set(it.productId, {
+        qty: prev.qty + Number(it.quantity),
+        unitCost: Number(it.unitCost),
+        mrp: it.mrp !== undefined ? Number(it.mrp) : prev.mrp,
+        pubDisc: it.publisherDiscountPercent !== undefined ? Number(it.publisherDiscountPercent) : prev.pubDisc,
+        item: it,
+      });
+    }
+
+    for (const pId of allProductIds) {
+      const pEntry = prodMap.get(pId);
+      if (!pEntry || !pEntry.snap.exists()) continue;
+
+      const pData = pEntry.snap.data() as ProductDocument;
+      const currentStock = Number(pData.currentStock || 0);
+      const oldQty = oldItemMap.get(pId)?.qty || 0;
+      const newQty = newItemMap.get(pId)?.qty || 0;
+      const deltaQty = newQty - oldQty;
+
+      const newStock = Math.max(0, currentStock + deltaQty);
+      const lowThreshold = Number(pData.lowStockThreshold || 0);
+      const wasLow = currentStock <= lowThreshold;
+      const isNowLow = newStock <= lowThreshold;
+
+      if (!wasLow && isNowLow) lowStockDelta += 1;
+      if (wasLow && !isNowLow) lowStockDelta -= 1;
+
+      totalQtyDelta += deltaQty;
+
+      const newEntry = newItemMap.get(pId);
+      const latestCost = newEntry ? newEntry.unitCost : Number(pData.costPrice || 0);
+
+      // Update product document
+      transaction.update(pEntry.ref, {
+        currentStock: newStock,
+        costPrice: latestCost,
+        isLowStock: isNowLow,
+        updatedAt: now,
+      });
+
+      // Update or delete purchase FIFO batch
+      const batchId = getStockBatchId(purchaseRef.id, pId);
+      const batchRef = doc(db!, STOCK_BATCHES_COLLECTION, batchId);
+
+      if (newQty > 0 && newEntry) {
+        const lineMrp = newEntry.mrp || pData.retailPrice || newEntry.unitCost;
+        const lineDisc = newEntry.pubDisc || 0;
+        const batchDoc: StockBatchDocument = {
+          id: batchId,
+          productId: pId,
+          productTitle: newEntry.item.productName,
+          purchaseId: purchaseRef.id,
+          purchaseInvoiceNo: cleanInvoiceNo,
+          purchaseDate: input.purchaseDate || now.split('T')[0],
+          quantityPurchased: newQty,
+          remainingQuantity: newQty,
+          mrp: lineMrp,
+          publisherDiscountPercent: lineDisc,
+          unitCost: newEntry.unitCost,
+          totalCost: roundMoney(newQty * newEntry.unitCost),
+          batchType: 'purchase',
+          createdAt: oldDoc.createdAt || now,
+          updatedAt: now,
+        };
+        transaction.set(batchRef, batchDoc);
+      } else {
+        // Item removed in this edit
+        transaction.delete(batchRef);
+      }
+
+      // Record audit stock movement if net quantity changed
+      if (deltaQty !== 0) {
+        const moveRef = doc(collection(db!, 'stockMovements'));
+        const movement: StockMovementDocument = {
+          id: moveRef.id,
+          productId: pId,
+          productName: pData.title,
+          movementType: deltaQty > 0 ? 'in' : 'out',
+          quantity: Math.abs(deltaQty),
+          previousStock: currentStock,
+          newStock: newStock,
+          reason: 'purchase_edit',
+          referenceDocId: purchaseRef.id,
+          recordedByUserId: userId,
+          createdAt: now,
+        };
+        transaction.set(moveRef, movement);
+      }
+    }
+
+    // Value delta
+    const oldTotalCost = oldDoc.items.reduce((s, it) => s + it.totalCost, 0);
+    const newTotalCost = input.items.reduce((s, it) => s + Number(it.totalCost), 0);
+    totalValDelta = newTotalCost - oldTotalCost;
+
+    // Supplier balance adjustments
+    const oldRemaining = Number(oldDoc.remainingBalance || 0);
+
+    if (oldDoc.supplierId === input.supplierId) {
+      if (oldSupRef && oldSupSnap && oldSupSnap.exists()) {
+        const curSupBal = Number(oldSupSnap.data().currentBalance || 0);
+        const deltaBal = newRemainingBalance - oldRemaining;
+        transaction.update(oldSupRef, {
+          currentBalance: Math.max(0, curSupBal + deltaBal),
+          updatedAt: now,
+        });
+      }
+    } else {
+      // Supplier was changed to a different supplier
+      if (oldSupRef && oldSupSnap && oldSupSnap.exists()) {
+        const curOldBal = Number(oldSupSnap.data().currentBalance || 0);
+        transaction.update(oldSupRef, {
+          currentBalance: Math.max(0, curOldBal - oldRemaining),
+          updatedAt: now,
+        });
+      }
+      if (newSupRef && newSupSnap && newSupSnap.exists()) {
+        const curNewBal = Number(newSupSnap.data().currentBalance || 0);
+        transaction.update(newSupRef, {
+          currentBalance: curNewBal + newRemainingBalance,
+          updatedAt: now,
+        });
+      }
+    }
+
+    // Update global inventory summary
+    if (summarySnap && summarySnap.exists()) {
+      transaction.update(summaryRef, {
+        totalStockQuantity: increment(totalQtyDelta),
+        totalStockValue: increment(totalValDelta),
+        lowStockCount: increment(lowStockDelta),
+        updatedAt: now,
+      });
+    }
+
+    // Update purchase document
+    const updatedPurchase: PurchaseDocument = {
+      id: purchaseRef.id,
+      purchaseInvoiceNo: cleanInvoiceNo,
+      supplierId: input.supplierId,
+      supplierName: input.supplierName,
+      items: input.items.map((it) => ({
+        productId: it.productId,
+        productName: it.productName,
+        quantity: Number(it.quantity),
+        mrp: it.mrp !== undefined ? Number(it.mrp) : undefined,
+        publisherDiscountPercent: it.publisherDiscountPercent !== undefined ? Number(it.publisherDiscountPercent) : undefined,
+        unitCost: Number(it.unitCost),
+        totalCost: Number(it.totalCost),
+      })),
+      subtotal: Number(input.subtotal),
+      discountAmount: Number(input.discountAmount) || 0,
+      grandTotal: Number(input.grandTotal),
+      paidAmount: Number(input.paidAmount) || 0,
+      remainingBalance: newRemainingBalance,
+      paymentMethod: input.paymentMethod,
+      purchaseDate: input.purchaseDate || oldDoc.purchaseDate,
+      receivedByUserId: userId,
+      notes: input.notes?.trim() || '',
+      createdAt: oldDoc.createdAt,
+      updatedAt: now,
+    };
+
+    transaction.update(purchaseRef, updatedPurchase);
+    finalPurchaseDoc = updatedPurchase;
+  });
+
+  await logAuditEvent(
+    'UPDATE_PURCHASE',
+    'purchases',
+    `Purchase updated: ${cleanInvoiceNo} from ${input.supplierName} (Total: PKR ${input.grandTotal}, Items: ${input.items.length})`,
+    purchaseId,
+    userId,
+    userEmail
+  );
+
+  return finalPurchaseDoc!;
+};
+
 export const getPurchasesPaginated = async (
   filters: PurchaseFilters = {},
   cursorDoc: QueryDocumentSnapshot<DocumentData> | null = null,

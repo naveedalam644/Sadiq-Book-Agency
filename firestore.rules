@@ -81,16 +81,14 @@ service cloud.firestore {
     // -------------------------------------------------------------------------
     match /suppliers/{supplierId} { allow read, write: if isStaff(); }
     match /purchases/{purchaseId} {
-      allow read, create, update: if isStaff();
-      allow delete: if isStoreAdmin();
+      allow read, create, update, delete: if isStaff();
     }
 
     // -------------------------------------------------------------------------
     // 7. STOCK BATCHES & FIFO TRACKING
     // -------------------------------------------------------------------------
     match /stockBatches/{batchId} {
-      allow read, create, update: if isStaff();
-      allow delete: if isStoreAdmin();
+      allow read, create, update, delete: if isStaff();
     }
 
     // -------------------------------------------------------------------------

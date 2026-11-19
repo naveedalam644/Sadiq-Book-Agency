@@ -19,9 +19,16 @@ import {
   getPublisherAnalyticsReport,
   invalidatePublisherAnalyticsCache,
   type PublisherAnalyticsReport,
+  type PublisherSeriesMetrics,
 } from '../services/publisherAnalyticsService';
+import { batchUpdateSeriesDiscount } from '../services/priceListService';
+import { useAuth } from '../hooks/useAuth';
+import { useToast } from '../hooks/useToast';
 
 export const PublisherAnalytics: React.FC = () => {
+  const { currentUser } = useAuth();
+  const { success: toastSuccess, error: toastError } = useToast();
+
   const [periodPreset, setPeriodPreset] = useState<'this_month' | 'last_month' | 'this_year' | 'custom'>('this_month');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
@@ -33,6 +40,8 @@ export const PublisherAnalytics: React.FC = () => {
   const [expandedSeries, setExpandedSeries] = useState<Record<string, boolean>>({});
   const [publisherTab, setPublisherTab] = useState<Record<string, 'series' | 'all_products'>>({});
   const [innerSearch, setInnerSearch] = useState<string>('');
+  const [seriesDiscountInputs, setSeriesDiscountInputs] = useState<Record<string, string>>({});
+  const [isUpdatingSeries, setIsUpdatingSeries] = useState<Record<string, boolean>>({});
 
   // Compute dates based on preset
   useEffect(() => {
@@ -92,6 +101,41 @@ export const PublisherAnalytics: React.FC = () => {
 
   const toggleExpand = (pubName: string) => {
     setExpandedPublisher((prev) => (prev === pubName ? null : pubName));
+  };
+
+  const handleApplySeriesDiscount = async (publisherName: string, ser: PublisherSeriesMetrics) => {
+    const serKey = `${publisherName}:${ser.seriesName}`;
+    const rawVal = seriesDiscountInputs[serKey] ?? String(ser.publisherDiscountPercent ?? 0);
+    const discNum = parseFloat(rawVal);
+    if (isNaN(discNum) || discNum < 0 || discNum > 100) {
+      toastError('Please enter a valid discount percentage between 0 and 100.');
+      return;
+    }
+
+    setIsUpdatingSeries((prev) => ({ ...prev, [serKey]: true }));
+    try {
+      const activeUid = currentUser?.uid || 'admin';
+      const activeEmail = currentUser?.email || 'admin@sadiqbookagency.com';
+      const res = await batchUpdateSeriesDiscount(
+        {
+          seriesId: ser.seriesId,
+          seriesName: ser.seriesName,
+          publisherName,
+        },
+        discNum,
+        activeUid,
+        activeEmail
+      );
+
+      toastSuccess(`Applied ${discNum}% discount to ${res.updatedCount} books in series "${ser.seriesName}".`);
+      invalidatePublisherAnalyticsCache();
+      await loadReport(true);
+    } catch (err: any) {
+      console.error('Failed to update series discount:', err);
+      toastError(err?.message || 'Could not update series discount');
+    } finally {
+      setIsUpdatingSeries((prev) => ({ ...prev, [serKey]: false }));
+    }
   };
 
   return (
@@ -564,15 +608,60 @@ export const PublisherAnalytics: React.FC = () => {
                                                   <Layers className="w-4 h-4" />
                                                 </div>
                                                 <div>
-                                                  <div className="flex items-center gap-2">
+                                                  <div className="flex items-center gap-2 flex-wrap">
                                                     <span className="font-black text-sm text-[#071F49]">
                                                       {ser.seriesName}
                                                     </span>
                                                     <span className="px-2 py-0.5 rounded-md bg-amber-50 text-amber-900 border border-amber-200 text-[10.5px] font-bold">
                                                       {ser.totalProductsCount} {ser.totalProductsCount === 1 ? 'Book' : 'Books'}
                                                     </span>
+
+                                                    {/* Series Discount Input Box (Per User Drawing in Image 1) */}
+                                                    <div
+                                                      className="flex items-center gap-1 bg-white border border-slate-300 rounded-lg px-2 py-0.5 shadow-2xs ml-1"
+                                                      onClick={(e) => e.stopPropagation()}
+                                                    >
+                                                      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-600">
+                                                        Publisher Disc:
+                                                      </span>
+                                                      <input
+                                                        type="number"
+                                                        min="0"
+                                                        max="100"
+                                                        step="0.5"
+                                                        value={
+                                                          seriesDiscountInputs[serKey] !== undefined
+                                                            ? seriesDiscountInputs[serKey]
+                                                            : ser.publisherDiscountPercent !== undefined && ser.publisherDiscountPercent > 0
+                                                            ? String(ser.publisherDiscountPercent)
+                                                            : ''
+                                                        }
+                                                        onChange={(e) => {
+                                                          const val = e.target.value;
+                                                          setSeriesDiscountInputs((prev) => ({ ...prev, [serKey]: val }));
+                                                        }}
+                                                        onKeyDown={(e) => {
+                                                          if (e.key === 'Enter') {
+                                                            e.preventDefault();
+                                                            handleApplySeriesDiscount(pub.publisherName, ser);
+                                                          }
+                                                        }}
+                                                        placeholder="0"
+                                                        className="w-12 text-center font-black text-xs border border-slate-300 rounded px-1 py-0.5 focus:outline-none focus:ring-1 focus:ring-[#071F49] bg-slate-50"
+                                                      />
+                                                      <span className="text-xs font-bold text-slate-500">%</span>
+                                                      <button
+                                                        type="button"
+                                                        onClick={() => handleApplySeriesDiscount(pub.publisherName, ser)}
+                                                        disabled={Boolean(isUpdatingSeries[serKey])}
+                                                        className="px-2 py-0.5 bg-[#071F49] hover:bg-[#0E2E70] text-[#F5B51B] text-[10.5px] font-black rounded transition shadow-2xs cursor-pointer disabled:opacity-50"
+                                                        title="Apply this discount to all books in this series"
+                                                      >
+                                                        {isUpdatingSeries[serKey] ? 'Saving...' : 'Apply'}
+                                                      </button>
+                                                    </div>
                                                   </div>
-                                                  <span className="text-[11px] text-slate-500">
+                                                  <span className="text-[11px] text-slate-500 block mt-0.5">
                                                     Click to {isSeriesOpen ? 'hide' : 'view'} itemized single product hisab
                                                   </span>
                                                 </div>
